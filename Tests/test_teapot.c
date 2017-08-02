@@ -165,7 +165,7 @@ int Config_Save(Config* c,const char* filePath)  {
 Config config;
 
 
-// glut has a special fullscreen GameMode that you can togglee with CTRL+RETURN (not in WebGL)
+// glut has a special fullscreen GameMode that you can toggle with CTRL+RETURN (not in WebGL)
 int windowId = 0; 			// window Id when not in fullscreen mode
 int gameModeWindowId = 0;	// window Id when in fullscreen mode
 
@@ -310,7 +310,7 @@ void InitGL(void) {
     Teapot_Init();
     //-----------------------------------------------------------------------
 
-    // These are important, but often overlooked OpenGL calls
+    // These are important, but often overlooked, OpenGL calls
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);  // Otherwise transparent objects are not displayed correctly
@@ -364,7 +364,7 @@ void DrawGL(void)
     unsigned elapsed_time,delta_time;
     static unsigned long frames = 0;
     static unsigned fps_time_start = 0;
-    float FPS = 60;
+    static float FPS = 60;
     // We need this because we'll keep modifying it to pass all the model matrices
     static tpoat mMatrix[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
 
@@ -658,8 +658,6 @@ void GlutCreateWindow() {
     GlutDestroyWindow();
 #   ifndef __EMSCRIPTEN__
     if (config.fullscreen_enabled)	{
-        const int screenWidth = glutGet(GLUT_SCREEN_WIDTH);
-        const int screenHeight = glutGet(GLUT_SCREEN_HEIGHT);
         char gms[16]="";
         if (config.fullscreen_width>0 && config.fullscreen_height>0)	{
             sprintf(gms,"%dx%d:32",config.fullscreen_width,config.fullscreen_height);
@@ -668,6 +666,8 @@ void GlutCreateWindow() {
             else config.fullscreen_width=config.fullscreen_height=0;
         }
         if (gameModeWindowId==0)	{
+            const int screenWidth = glutGet(GLUT_SCREEN_WIDTH);
+            const int screenHeight = glutGet(GLUT_SCREEN_HEIGHT);
             sprintf(gms,"%dx%d:32",screenWidth,screenHeight);
             glutGameModeString(gms);
             if (glutGameModeGet (GLUT_GAME_MODE_POSSIBLE)) gameModeWindowId = glutEnterGameMode();
@@ -713,7 +713,7 @@ int main(int argc, char** argv)
 {
 
     glutInit(&argc, argv);
-    glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_DEPTH | GLUT_STENCIL);	// GLUT_ALPHA
+    glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_DEPTH);
 #ifndef __EMSCRIPTEN__
     //glutInitContextFlags(GLUT_FORWARD_COMPATIBLE);
 #ifdef __FREEGLUT_STD_H__

@@ -86,7 +86,7 @@ for glut.h, glew.h, etc. with something like:
 #define TEAPOT_SHADER_SPECULAR                  // (Optional) specular hilights
 #define TEAPOT_SHADER_FOG                       // (Optional) fog to remove bad clipping
 #define TEAPOT_SHADER_FOG_HINT_FRAMENT_SHADER   // (Optional) better fog quality
-#define TEAPOT_SHADER_USE_SHADOW_MAP            // Mandatory for implementing the second shadow mapping step
+#define TEAPOT_SHADER_USE_SHADOW_MAP            // Mandatory for implementing the second shadow mapping step, but can be disabled in this demo
 #define TEAPOT_ENABLE_FRUSTUM_CULLING           // (Optional) a bit expensive, and does not cull 100% hidden objects. You'd better test if it works and if it's faster...
 #define TEAPOT_IMPLEMENTATION                   // Mandatory in 1 source file (.c or .cpp)
 #include "teapot.h"
@@ -187,7 +187,7 @@ int Config_Save(Config* c,const char* filePath)  {
 #endif //__EMSCRIPTEN__
 Config config;
 
-// glut has a special fullscreen GameMode that you can togglee with CTRL+RETURN (not in WebGL)
+// glut has a special fullscreen GameMode that you can toggle with CTRL+RETURN (not in WebGL)
 int windowId = 0; 			// window Id when not in fullscreen mode
 int gameModeWindowId = 0;	// window Id when in fullscreen mode
 
@@ -343,7 +343,7 @@ void ResizeGL(int w,int h) {
         Teapot_SetProjectionMatrix(pMatrix);
     }
 
-    if (h>0) Dynamic_Resolution_Resize(w,h);    // The dynamic resolution texture (and the shdow map) change their size with this call
+    if (h>0) Dynamic_Resolution_Resize(w,h);    // The dynamic resolution texture (and the shadow map) change their size with this call
 
     if (w>0 && h>0 && !config.fullscreen_enabled) {
         // On exiting we'll like to save these data back
@@ -402,7 +402,6 @@ void InitGL(void) {
     glEnable(GL_CULL_FACE);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);  // Otherwise transparent objects are not displayed correctly
     glClearColor(0.3f, 0.6f, 1.0f, 1.0f);
-    glClearStencil(0);          // (Optional) Actually we're not using the stencil buffer in this demo
     glEnable(GL_TEXTURE_2D);    // Only needed for ffp, when VISUALIZE_DEPTH_TEXTURE is defined
 
 #   ifdef TEAPOT_SHADER_FOG
@@ -600,6 +599,10 @@ void DrawGL(void)
 
     // Draw to Shadow Map------------------------------------------------------------------------------------------
     {
+    // Note: we could just skip this if TEAPOT_SHADER_USE_SHADOW_MAP is not defined,
+    // but this part can still be done because it's part of "dynamic_resolution.h",
+    // and the shadow map texture can still be created and displayed.
+
     // We're currently calculating all these matrices every frame. This is obviously wrong.
     // Also: there's no fixed rule I know to calculate these matrices. Feel free to change them!
     static float lpMatrix[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
@@ -767,7 +770,7 @@ As a bonus, if you do all the above, you're well on your way to implementing cas
     // Render to framebuffer---------------------------------------------------------------------------------------
     Dynamic_Resolution_Bind();  // This defaults to nothing if we don't use dynamic resolution (-> it's for free: we can draw inside it as usual)
 
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT); // The last flag can be omitted
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     Teapot_PreDraw();
 
@@ -816,7 +819,7 @@ As a bonus, if you do all the above, you're well on your way to implementing cas
     
 	Dynamic_Resolution_Unbind();	
 
-    // Draw to screen at resolution_factor: render_target.resolution_factor[render_target_index2]------------------
+    // Draw to screen at current resolution_factor: ----------------------------------------------------------------
     glDisable(GL_DEPTH_TEST);glDisable(GL_CULL_FACE);glDepthMask(GL_FALSE);
     Dynamic_Resolution_Render(instantFrameTime);    // Mandatory
     glEnable(GL_DEPTH_TEST);glEnable(GL_CULL_FACE);glDepthMask(GL_TRUE);
@@ -1048,8 +1051,6 @@ void GlutCreateWindow() {
     GlutDestroyWindow();
 #   ifndef __EMSCRIPTEN__
     if (config.fullscreen_enabled)	{
-        const int screenWidth = glutGet(GLUT_SCREEN_WIDTH);
-        const int screenHeight = glutGet(GLUT_SCREEN_HEIGHT);
         char gms[16]="";
         if (config.fullscreen_width>0 && config.fullscreen_height>0)	{
             sprintf(gms,"%dx%d:32",config.fullscreen_width,config.fullscreen_height);
@@ -1058,6 +1059,8 @@ void GlutCreateWindow() {
             else config.fullscreen_width=config.fullscreen_height=0;
         }
         if (gameModeWindowId==0)	{
+            const int screenWidth = glutGet(GLUT_SCREEN_WIDTH);
+            const int screenHeight = glutGet(GLUT_SCREEN_HEIGHT);
             sprintf(gms,"%dx%d:32",screenWidth,screenHeight);
             glutGameModeString(gms);
             if (glutGameModeGet (GLUT_GAME_MODE_POSSIBLE)) gameModeWindowId = glutEnterGameMode();
@@ -1103,7 +1106,7 @@ int main(int argc, char** argv)
 {
 
     glutInit(&argc, argv);
-    glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_DEPTH | GLUT_STENCIL);	// GLUT_ALPHA
+    glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_DEPTH);
 #ifndef __EMSCRIPTEN__
     //glutInitContextFlags(GLUT_FORWARD_COMPATIBLE);
 #ifdef __FREEGLUT_STD_H__
