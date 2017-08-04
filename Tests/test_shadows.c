@@ -85,7 +85,7 @@ for glut.h, glew.h, etc. with something like:
 //#define TEAPOT_INVERT_MESHES_Z_AXIS           // (Optional) Otherwise meshes look in the opposite Z direction
 #define TEAPOT_SHADER_SPECULAR                  // (Optional) specular hilights
 #define TEAPOT_SHADER_FOG                       // (Optional) fog to remove bad clipping
-#define TEAPOT_SHADER_FOG_HINT_FRAMENT_SHADER   // (Optional) better fog quality
+#define TEAPOT_SHADER_FOG_HINT_FRAGMENT_SHADER	// (Optional) better fog quality
 #define TEAPOT_SHADER_USE_SHADOW_MAP            // Mandatory for implementing the second shadow mapping step, but can be disabled in this demo
 #define TEAPOT_ENABLE_FRUSTUM_CULLING           // (Optional) a bit expensive, and does not cull 100% hidden objects. You'd better test if it works and if it's faster...
 #define TEAPOT_IMPLEMENTATION                   // Mandatory in 1 source file (.c or .cpp)

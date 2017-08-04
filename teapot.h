@@ -26,9 +26,13 @@
  * Define TEAPOT_IMPLEMENTATION in one of your .c (or .cpp) files before the inclusion of this file.
 */
 // OPTIONAL DEFINITIONS:
+//
+//#define TEAPOT_CENTER_MESHES_ON_FLOOR   // By default meshes are centered in their model location (usually their aabb center)
+//#define TEAPOT_INVERT_MESHES_Z_AXIS     // Makes meshes look in the opposite Z direction
+//
 //#define TEAPOT_SHADER_SPECULAR // Adds specular light component in the shader and Teapot_SetColorSpecular(...) function
 //#define TEAPOT_SHADER_FOG // Adds linear fog in the shader and Teapot_SetFogColor(...) Teapot_SetFogDistances(...) functions
-//#define TEAPOT_SHADER_FOG_HINT_FRAMENT_SHADER // Changes the fog quality a bit (used only when TEAPOT_SHADER_FOG is defined)
+//#define TEAPOT_SHADER_FOG_HINT_FRAGMENT_SHADER // Changes the fog quality a bit (used only when TEAPOT_SHADER_FOG is defined)
 //#define TEAPOT_SHADER_USE_NORMAL_MATRIX  // (slow) accurate normal calculations when the model(view) matrix has some scaling applied (instead of using Teapot_SetScaling(...)).
 //                                            But, overall, I think that leaving this definition out and just using Teapot_SetScaling(...) and orthonormal mvMatrices (= no glScalef(...)),
 //                                            is accurate enough, faster, and easier to use too. NOTE that you probably need to CHANGE something in your code if you switch this definition on/off.
@@ -446,11 +450,11 @@ static const char* TeapotVS[] = {
 #   endif //TEAPOT_SHADER_SPECULAR
 #   ifdef TEAPOT_SHADER_FOG
     "uniform vec4 u_fogDistances;\n"
-#   ifndef TEAPOT_SHADER_FOG_HINT_FRAMENT_SHADER
+#   ifndef TEAPOT_SHADER_FOG_HINT_FRAGMENT_SHADER
     "uniform vec3 u_fogColor;\n"
-#   else //TEAPOT_SHADER_FOG_HINT_FRAMENT_SHADER
+#   else //TEAPOT_SHADER_FOG_HINT_FRAGMENT_SHADER
     "varying float v_fog;\n"
-#   endif // TEAPOT_SHADER_FOG_HINT_FRAMENT_SHADER
+#   endif // TEAPOT_SHADER_FOG_HINT_FRAGMENT_SHADER
 #   endif // TEAPOT_SHADER_FOG
 #   ifdef TEAPOT_SHADER_USE_SHADOW_MAP
     "uniform mat4 u_biasedShadowMvpMatrix;\n"
@@ -482,15 +486,15 @@ static const char* TeapotVS[] = {
     "   v_color = vec4(u_colorAmbient.rgb + (u_color.rgb*fDot+specularColor.rgb)*u_colorAmbient.a,u_color.a);\n"
 #   endif // TEAPOT_SHADER_SPECULAR
 #   ifdef TEAPOT_SHADER_FOG
-#   ifdef TEAPOT_SHADER_FOG_HINT_FRAMENT_SHADER
+#   ifdef TEAPOT_SHADER_FOG_HINT_FRAGMENT_SHADER
     "  v_fog = \n"
-#   else //TEAPOT_SHADER_FOG_HINT_FRAMENT_SHADER
+#   else //TEAPOT_SHADER_FOG_HINT_FRAGMENT_SHADER
     "   float v_fog = \n"
-#   endif //TEAPOT_SHADER_FOG_HINT_FRAMENT_SHADER
+#   endif //TEAPOT_SHADER_FOG_HINT_FRAGMENT_SHADER
     "   1.0 - (u_fogDistances.y-abs(vertexScaledEyeSpace.z))*u_fogDistances.w;\n"
-#   ifndef TEAPOT_SHADER_FOG_HINT_FRAMENT_SHADER
+#   ifndef TEAPOT_SHADER_FOG_HINT_FRAGMENT_SHADER
     "  v_color.rgb = mix(v_color.rgb,u_fogColor.rgb,v_fog);\n"
-#   endif //TEAPOT_SHADER_FOG_HINT_FRAMENT_SHADER
+#   endif //TEAPOT_SHADER_FOG_HINT_FRAGMENT_SHADER
 #   endif //TEAPOT_SHADER_FOG
     "   gl_Position = u_pMatrix * vertexScaledEyeSpace;\n"
     "}\n"
@@ -507,10 +511,10 @@ static const char* TeapotFS[] = {
     "#endif\n"
     "varying vec4 v_color;\n"
 #   ifdef TEAPOT_SHADER_FOG
-#   ifdef TEAPOT_SHADER_FOG_HINT_FRAMENT_SHADER
+#   ifdef TEAPOT_SHADER_FOG_HINT_FRAGMENT_SHADER
     "uniform vec3 u_fogColor;\n"
     "varying float v_fog;\n"
-#   endif //TEAPOT_SHADER_FOG_HINT_FRAMENT_SHADER
+#   endif //TEAPOT_SHADER_FOG_HINT_FRAGMENT_SHADER
 #   endif
 #   ifdef TEAPOT_SHADER_USE_SHADOW_MAP
     "uniform sampler2D u_shadowMap;\n"
@@ -533,11 +537,11 @@ static const char* TeapotFS[] = {
 #   endif //TEAPOT_SHADER_USE_SHADOW_MAP
 
 #   ifdef TEAPOT_SHADER_FOG
-#   ifdef TEAPOT_SHADER_FOG_HINT_FRAMENT_SHADER
+#   ifdef TEAPOT_SHADER_FOG_HINT_FRAGMENT_SHADER
     "   //float v_fog = 1.0 - (u_fogDistances.y-gl_FragCoord.z/gl_FragCoord.w)*u_fogDistances.w;\n" // Best quality but expensive...
     "   gl_FragColor = vec4(mix(v_color.rgb*shadowFactor,u_fogColor.rgb,v_fog).rgb,v_color.a);\n"
     "   return;\n"
-#   endif //TEAPOT_SHADER_FOG_HINT_FRAMENT_SHADER
+#   endif //TEAPOT_SHADER_FOG_HINT_FRAGMENT_SHADER
 #   endif //TEAPOT_SHADER_FOG
     "    gl_FragColor = vec4(v_color.rgb*shadowFactor,v_color.a);\n"
     "}\n"
@@ -638,7 +642,7 @@ int Teapot_Helper_IsVisible(const tpoat frustumPlanes[6][4],const tpoat*__restri
     const tpoat* m = mfMatrix16;
     const tpoat a[9] = {m[0]*aabbMinX,m[1]*aabbMinX,    m[2]*aabbMinX, m[4]*aabbMinY,m[5]*aabbMinY,m[6]*aabbMinY,   m[8]*aabbMinZ,m[9]*aabbMinZ,m[10]*aabbMinZ};
     const tpoat b[9] = {m[0]*aabbMaxX,m[1]*aabbMaxX,    m[2]*aabbMaxX, m[4]*aabbMaxY,m[5]*aabbMaxY,m[6]*aabbMaxY,   m[8]*aabbMaxZ,m[9]*aabbMaxZ,m[10]*aabbMaxZ};
-    tpoat buf[18],aabb[6];
+    tpoat buf[18];
     Teapot_Helper_Min3(&buf[0], &a[0],&b[0]);
     Teapot_Helper_Min3(&buf[3], &a[3],&b[3]);
     Teapot_Helper_Min3(&buf[6], &a[6],&b[6]);

@@ -25,11 +25,11 @@
 // HOW TO COMPILE:
 /*
 // LINUX:
-gcc -O2 -std=gnu89 test_teapot.c -o test_teapot -I"../" -lglut -lGL -lX11 -lm
+gcc -O2 -std=gnu89 test_matrix_stack.c -o test_matrix_stack -I"../" -lglut -lGL -lX11 -lm
 // WINDOWS (here we use the static version of glew, and glut32.lib, that can be replaced by freeglut.lib):
-cl /O2 /MT /Tc test_teapot.c /D"TEAPOT_NO_RESTRICT" /D"GLEW_STATIC" /I"../" /link /out:test_teapot.exe glut32.lib glew32s.lib opengl32.lib gdi32.lib Shell32.lib comdlg32.lib user32.lib kernel32.lib
+cl /O2 /MT /Tc test_matrix_stack.c /D"TEAPOT_NO_RESTRICT" /D"GLEW_STATIC" /I"../" /link /out:test_matrix_stack.exe glut32.lib glew32s.lib opengl32.lib gdi32.lib Shell32.lib comdlg32.lib user32.lib kernel32.lib
 // EMSCRIPTEN:
-emcc -O2 -std=gnu89 -fno-rtti -fno-exceptions -o test_teapot.html test_teapot.c -I"./" -I"../" -s LEGACY_GL_EMULATION=0 --closure 1
+emcc -O2 -std=gnu89 -fno-rtti -fno-exceptions -o test_matrix_stack.html test_matrix_stack.c -I"./" -I"../" -s LEGACY_GL_EMULATION=0 --closure 1
 (for web assembly add: -s WASM=1)
 
 // IN ADDITION:
@@ -82,20 +82,29 @@ for glut.h, glew.h, etc. with something like:
 #include <math.h>
 #include <string.h>
 
+#define USE_DOUBLE_PRECISION
+#ifdef USE_DOUBLE_PRECISION
+#   define TEAPOT_MATRIX_USE_DOUBLE_PRECISION       // (Optional) makes tpoat (teapot_float) be double instead of float
+#   define IM_MATRIX_STACK_USE_DOUBLE_PRECISION     // (Optional) makes imoat (im_matrix_stack_float) be double instead of float
+#endif //USE_DOUBLE_PRECISION
+
 #define TEAPOT_CENTER_MESHES_ON_FLOOR   // (Optional) Otherwise meshes are centered in their local aabb center
 //#define TEAPOT_INVERT_MESHES_Z_AXIS     // (Optional) Otherwise meshes look in the opposite Z direction
-#define TEAPOT_SHADER_SPECULAR          // (Optional) specular hilights
-#define TEAPOT_SHADER_FOG           // (Optional) fog to remove bad clipping
-#define TEAPOT_SHADER_FOG_HINT_FRAGMENT_SHADER // (Optional) better fog quality
-//#define TEAPOT_MATRIX_USE_DOUBLE_PRECISION    // (Optional) makes tpoat (teapot_float) be double instead of float
+//#define TEAPOT_SHADER_SPECULAR          // (Optional) specular hilights
+//#define TEAPOT_SHADER_FOG           // (Optional) fog to remove bad clipping
+//#define TEAPOT_SHADER_FOG_HINT_FRAGMENT_SHADER // (Optional) better fog quality
 //#define TEAPOT_ENABLE_FRUSTUM_CULLING           // (Optional) a bit expensive, and does not cull 100% hidden objects. You'd better test if it works and if it's faster...
 #define TEAPOT_IMPLEMENTATION       // Mandatory in only one c/c++ file
 #include "teapot.h"
 
 
+#define IM_MATRIX_STACK_IMPLEMENTATION       // Mandatory in only one c/c++ file
+#include "im_matrix_stack.h"
+
+
 // Config file handling: basically there's an .ini file next to the
 // exe that you can tweak. (it's just an extra)
-const char* ConfigFileName = "test_teapot.ini";
+const char* ConfigFileName = "test_matrix_stack.ini";
 typedef struct {
     int fullscreen_width,fullscreen_height;
     int windowed_width,windowed_height;
@@ -182,7 +191,6 @@ tpoat cameraYaw;                // please set it in resetCamera()
 tpoat cameraPitch;              // please set it in resetCamera()
 tpoat cameraDistance;           // please set it in resetCamera()
 tpoat cameraPos[3];             // Derived value (do not edit)
-tpoat vMatrix[16];              // view matrix
 tpoat cameraSpeed = 0.5f;       // When moving it
 
 // light data
@@ -196,93 +204,7 @@ const tpoat pMatrixFarPlane = 20.0f;
 
 float instantFrameTime = 16.2f;
 
-// custom replacement of gluPerspective(...)
-static void Perspective(tpoat res[16],tpoat degfovy,tpoat aspect, tpoat zNear, tpoat zFar) {
-    const float eps = 0.0001f;
-    float f = 1.f/tan(degfovy*1.5707963268f/180.0); //cotg
-    float Dfn = (zFar-zNear);
-    if (Dfn==0) {zFar+=eps;zNear-=eps;Dfn=zFar-zNear;}
-    if (aspect==0) aspect = 1.f;
-
-    res[0]  = f/aspect;
-    res[1]  = 0;
-    res[2]  = 0;
-    res[3]  = 0;
-
-    res[4]  = 0;
-    res[5]  = f;
-    res[6]  = 0;
-    res[7] = 0;
-
-    res[8]  = 0;
-    res[9]  = 0;
-    res[10] = -(zFar+zNear)/Dfn;
-    res[11] = -1;
-
-    res[12]  = 0;
-    res[13]  = 0;
-    res[14] = -2.f*zFar*zNear/Dfn;
-    res[15] = 0;
-}
-// custom replacement of gluLookAt(...)
-static void LookAt(tpoat m[16],tpoat eyeX,tpoat eyeY,tpoat eyeZ,tpoat centerX,tpoat centerY,tpoat centerZ,tpoat upX,tpoat upY,tpoat upZ)    {
-    const float eps = 0.0001f;
-
-    float F[3] = {eyeX-centerX,eyeY-centerY,eyeZ-centerZ};
-    float length = F[0]*F[0]+F[1]*F[1]+F[2]*F[2];	// length2 now
-    float up[3] = {upX,upY,upZ};
-
-    float S[3] = {up[1]*F[2]-up[2]*F[1],up[2]*F[0]-up[0]*F[2],up[0]*F[1]-up[1]*F[0]};
-    float U[3] = {F[1]*S[2]-F[2]*S[1],F[2]*S[0]-F[0]*S[2],F[0]*S[1]-F[1]*S[0]};
-
-    if (length==0) length = eps;
-    length = sqrt(length);
-    F[0]/=length;F[1]/=length;F[2]/=length;
-
-    length = S[0]*S[0]+S[1]*S[1]+S[2]*S[2];if (length==0) length = eps;
-    length = sqrt(length);
-    S[0]/=length;S[1]/=length;S[2]/=length;
-
-    length = U[0]*U[0]+U[1]*U[1]+U[2]*U[2];if (length==0) length = eps;
-    length = sqrt(length);
-    U[0]/=length;U[1]/=length;U[2]/=length;
-
-    m[0] = S[0];
-    m[1] = U[0];
-    m[2] = F[0];
-    m[3]= 0;
-
-    m[4] = S[1];
-    m[5] = U[1];
-    m[6] = F[1];
-    m[7]= 0;
-
-    m[8] = S[2];
-    m[9] = U[2];
-    m[10]= F[2];
-    m[11]= 0;
-
-    m[12] = -S[0]*eyeX -S[1]*eyeY -S[2]*eyeZ;
-    m[13] = -U[0]*eyeX -U[1]*eyeY -U[2]*eyeZ;
-    m[14]= -F[0]*eyeX -F[1]*eyeY -F[2]*eyeZ;
-    m[15]= 1;
-}
-static __inline float Vec3Dot(const tpoat v0[3],const tpoat v1[3]) {
-    return v0[0]*v1[0]+v0[1]*v1[1]+v0[2]*v1[2];
-}
-static __inline void Vec3Normalize(tpoat v[3]) {
-    tpoat len = Vec3Dot(v,v);int i;
-    if (len!=0) {
-        len = sqrt(len);
-        for (i=0;i<3;i++) v[i]/=len;
-    }
-}
-static __inline void Vec3Cross(tpoat rv[3],const tpoat a[3],const tpoat b[3]) {
-    rv[0] =	a[1] * b[2] - a[2] * b[1];
-    rv[1] =	a[2] * b[0] - a[0] * b[2];
-    rv[2] =	a[0] * b[1] - a[1] * b[0];
-}
-
+// No more helper methods here!
 
 int current_width=0,current_height=0;  // Not sure when I've used these...
 void ResizeGL(int w,int h) {
@@ -290,8 +212,12 @@ void ResizeGL(int w,int h) {
     current_height = h;
     if (h>0)	{
         // We set our pMatrix here in ResizeGL(), and we must notify teapot.h about it too.
-        Perspective(pMatrix,pMatrixFovDeg,(tpoat)w/(tpoat)h,pMatrixNearPlane,pMatrixFarPlane);
+        imMatrixMode(GL_PROJECTION);
+        imLoadIdentity();
+        imuPerspective(pMatrixFovDeg,(tpoat)w/(tpoat)h,pMatrixNearPlane,pMatrixFarPlane);
+        imGetImoatv(GL_PROJECTION,pMatrix); // We can retrieve it if we need to store pMatrix.
         Teapot_SetProjectionMatrix(pMatrix);
+        imMatrixMode(GL_MODELVIEW);
     }
 
     if (w>0 && h>0 && !config.fullscreen_enabled) {
@@ -306,7 +232,8 @@ void ResizeGL(int w,int h) {
 
 
 void InitGL(void) {    
-    // IMPORTANT CALL--------------------------------------------------------
+    // IMPORTANT CALLS-------------------------------------------------------
+    Im_Matrix_Stack_Init();
     Teapot_Init();
     //-----------------------------------------------------------------------
 
@@ -333,13 +260,14 @@ void InitGL(void) {
 }
 
 void DestroyGL() {
-    // IMPORTANT CALL--------------------------------------------------------
+    // IMPORTANT CALLS--------------------------------------------------------
     Teapot_Destroy();
+    Im_Matrix_Stack_Destroy();
     // ----------------------------------------------------------------------
 }
 
 
-#define NUM_COLORS 10
+/*#define NUM_COLORS 10
 static float Colors[NUM_COLORS][3]={
 {0.4f,0.4f,0.f},
 {0.2f,0.7f,0.4f},
@@ -351,7 +279,7 @@ static float Colors[NUM_COLORS][3]={
 {0.8f,0.2f,0.8f},
 {0.5f,0.7f,1.0f},
 {0.65f,0.65f,0.65f}
-};
+};*/
 
 
 void DrawGL(void) 
@@ -365,8 +293,11 @@ void DrawGL(void)
     static unsigned long frames = 0;
     static unsigned fps_time_start = 0;
     static float FPS = 60;
-    // We need this because we'll keep modifying it to pass all the model matrices
-    static tpoat mMatrix[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+    // We will use these to move the little bunny:
+    const float sn = sin(cur_time*0.002f);
+    const float cs = cos(cur_time*0.001f);
+    imoat littleBunnyPos[3];    // The big bunny needs to know wher the little one is
+
 
     // Here are some FPS calculations
     if (begin==0) begin = timeNow;
@@ -382,107 +313,99 @@ void DrawGL(void)
     }
 
     // view Matrix
-    LookAt(vMatrix,cameraPos[0],cameraPos[1],cameraPos[2],targetPos[0],targetPos[1],targetPos[2],0,1,0);
-    Teapot_SetViewMatrixAndLightDirection(vMatrix,lightDirection);  // we must notify teapot.h, and we also pass the lightDirection here
+    imMatrixMode(GL_MODELVIEW);
+    imLoadIdentity();
+    // Here we don't store the vMatrix, so we can directly chain the gluLookAt(...) call,
+    // because imuLookAt(...), as many other calls, returns a const imoat*
+    Teapot_SetViewMatrixAndLightDirection(
+                imuLookAt(cameraPos[0],cameraPos[1],cameraPos[2],targetPos[0],targetPos[1],targetPos[2],0,1,0),
+                lightDirection);  // we must notify teapot.h, and we also pass the lightDirection here
+    // Moreover, we could have stored the pointer returned by imuLookAt(...), or more generally by imGetImoatMatrixPtr()):
+    // it points to the memory spot inside the stack. So if we "scope" the rest of the
+    // code with some imPushMatrix()/imPopMatrix(), it should stay valid.
 
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    imPushMatrix(); // Optional scope
+
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 
     Teapot_PreDraw();   // From now on we can call all the Teapot_XXX methods below
 
     // Ground mesh (box)
-    mMatrix[12]=0.0;    mMatrix[13]=-0.25;    mMatrix[14]=0.0;
+    imPushMatrix();
+    imTranslate(0,-0.25,0); // Note that we can use imTranslatef(...) or imTranslated(...) as well
     Teapot_SetScaling(8.f,0.25f,12.f);
     Teapot_SetColor(0.1f,0.6f,0.1f,1.0f);
-    Teapot_Draw(mMatrix,TEAPOT_MESH_CUBIC_GROUND);
+    Teapot_Draw_Mv(imGetImoatMatrixPtr(),TEAPOT_MESH_CUBIC_GROUND); // imGetImoatMatrixPtr() returns a ptr to the current stack matrix space of the current matrix mode
+    imPopMatrix();
 
     Teapot_SetScaling(1.f,1.f,1.f);
 
     // (teapot)
-    mMatrix[12]=0.5;    mMatrix[13]=0.0;    mMatrix[14]=-1.5;
+    imPushMatrix();
+    imLoadIdentity();   // New: Test: imLoadIdentity() necessary only if we call Teapot_Draw(...) instead of Teapot_Draw_Mv(...) here
+    imTranslate(0.5,0.0,-2.5);
+    imRotate(cur_time*0.02f,0,1,0);    // Of course we can use imRotatef(...), imRotated(...) as well
     Teapot_SetColor(1.f,0.4f,0.2f,1.0f);
-    Teapot_Draw(mMatrix,TEAPOT_MESH_TEAPOT);
+    Teapot_Draw(imGetImoatMatrixPtr(),TEAPOT_MESH_TEAPOT);
+    imPopMatrix();
 
-    // (bunny)
-    mMatrix[12]=-0.5;    mMatrix[13]=0.0;    mMatrix[14]=1.0;
-    Teapot_SetColor(0.2f,0.4f,0.9f,1.0f);
-    Teapot_Draw(mMatrix,TEAPOT_MESH_BUNNY);
 
     Teapot_SetScaling(0.5f,0.5f,0.5f);
 
     // (teapot)
-    mMatrix[12]=0.5;    mMatrix[13]=0.0;    mMatrix[14]=1.5;
+    imPushMatrix();
+    imTranslate(0.5,0.0,2.5);
     Teapot_SetColor(0.8f,0.6f,0.2f,1.0f);
-    Teapot_Draw(mMatrix,TEAPOT_MESH_TEAPOT);
+    Teapot_Draw_Mv(imGetImoatMatrixPtr(),TEAPOT_MESH_TEAPOT);
+    imPopMatrix();
 
-    // (bunny)
-    mMatrix[12]=-1.5;    mMatrix[13]=0.0;    mMatrix[14]=1.0;
+    // (little bunny)
+    imPushMatrix();
+    littleBunnyPos[0]=3.5*cs;littleBunnyPos[1]=0.0;littleBunnyPos[2]=2.0*sn;
+    imTranslate(littleBunnyPos[0],littleBunnyPos[1],littleBunnyPos[2]);
     Teapot_SetColor(0.3f,0.5f,1.0f,1.0f);
-    Teapot_Draw(mMatrix,TEAPOT_MESH_BUNNY);
+    Teapot_Draw_Mv(imGetImoatMatrixPtr(),TEAPOT_MESH_BUNNY);
+    imPopMatrix();
 
     // (transparency needs: glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);)
+    imPushMatrix();
     glEnable(GL_BLEND);
-    mMatrix[12]=-0.5;    mMatrix[13]=0.0;    mMatrix[14]=-0.5;
+    imTranslate(-2.5,0.0,-3.5);
     Teapot_SetColor(0.95f,0.95f,0.2f,0.65f);
-    Teapot_Draw(mMatrix,TEAPOT_MESH_CYLINDER);
+    Teapot_Draw_Mv(imGetImoatMatrixPtr(),TEAPOT_MESH_CYLINDER);
     glDisable(GL_BLEND);
+    imPopMatrix();
 
     // (capsule)
-    Teapot_SetScaling(0.25f,0.5f,0.25f);
+    imPushMatrix();
+    Teapot_SetScaling(0.45f,0.75f,0.45f);
     // For capsules, Teapot_SetScaling(x,y,z) is interpreted this way:
     // diameter = (x+z)/2; cylinderHeight = y. So the total height is: (cylinderHeight + diameter)
     // This was made to force uniform scaling of the two half spheres.
-    mMatrix[12]=0.5;    mMatrix[13]=0.0;    mMatrix[14]=0.5;
+    imTranslate(2.25,0.0,1.0);
     Teapot_SetColor(0.5f,0.75f,1.0f,1.0f);
-    Teapot_Draw(mMatrix,TEAPOT_MESH_CAPSULE);
+    Teapot_Draw_Mv(imGetImoatMatrixPtr(),TEAPOT_MESH_CAPSULE);
+    imPopMatrix();
 
+    // (big bunny)
+    imPushMatrix();
+    Teapot_SetScaling(1.f,1.f,1.f);
+    Teapot_SetColor(0.2f,0.4f,0.9f,1.0f);
+    imLoadIdentity();   // We MUST work with mMatrix now
+    imTranslate(-1.75,0.0,0.0); // (*)
+    // This makes the mMatrix Yaw look at the X and Z point (if you need pitch too, call IMLookAtYX(...), but it's the same in this demo because of TEAPOT_CENTER_MESHES_ON_FLOOR)
+    IMLookAtYX2D((imoat*) imGetImoatMatrixPtr(),littleBunnyPos[0],littleBunnyPos[2],
+            0.5,
+            2.5
+            );  // Last 2 args can be 0,0 if you just need rotation around (*)
+    // IMLookAtYX(),IMLookAtYX2D() need no scaling INSIDE the matrix (first argument)
+    Teapot_Draw(imGetImoatMatrixPtr(),TEAPOT_MESH_BUNNY);   // Not Teapot_Draw_Mv(...) here
+    imPopMatrix();
 
-    Teapot_SetColor(0.5f,0.2f,0.1f,1.0f);
-
-    // (chairs)
-    Teapot_SetScaling(0.25f,0.25f,0.25f);
-    mMatrix[13]=0.0;    mMatrix[14]=1.25;
-    mMatrix[12]= 1.3;Teapot_Draw(mMatrix,TEAPOT_MESH_CHAIR);
-    mMatrix[12]= 1.5;Teapot_Draw(mMatrix,TEAPOT_MESH_CHAIR);
-    mMatrix[12]= 1.7;Teapot_Draw(mMatrix,TEAPOT_MESH_CHAIR);
-
-    // With these 2 lines, we can achieve a 180° rotation for free
-    mMatrix[8]=-mMatrix[8];mMatrix[9]=-mMatrix[9];mMatrix[10]=-mMatrix[10];
-    mMatrix[0]=-mMatrix[0];mMatrix[1]=-mMatrix[1];mMatrix[2]=-mMatrix[2];
-    mMatrix[13]=0.0;    mMatrix[14]=1.55;
-    mMatrix[12]= 1.3;Teapot_Draw(mMatrix,TEAPOT_MESH_CHAIR);
-    mMatrix[12]= 1.5;Teapot_Draw(mMatrix,TEAPOT_MESH_CHAIR);
-    mMatrix[12]= 1.7;Teapot_Draw(mMatrix,TEAPOT_MESH_CHAIR);
-    mMatrix[0]=-mMatrix[0];mMatrix[1]=-mMatrix[1];mMatrix[2]=-mMatrix[2];
-    mMatrix[8]=-mMatrix[8];mMatrix[9]=-mMatrix[9];mMatrix[10]=-mMatrix[10];
-
-
-    // (table)
-    Teapot_SetScaling(0.3f,0.25f,0.25f);
-    mMatrix[12]=1.5;   mMatrix[13]=0.0;    mMatrix[14]=1.4;
-    Teapot_Draw(mMatrix,TEAPOT_MESH_TABLE);
-
-
-    /*{ // All meshes
-        int i;const int HALF_TEAPOT_MESH_COUNT = TEAPOT_MESH_COUNT/2+1;
-        Teapot_SetScaling(0.5,0.5,0.5);
-        for (i=0;i<TEAPOT_MESH_COUNT;i++)   {
-            const int ci = i%NUM_COLORS;
-            Teapot_SetColor(Colors[ci][0],Colors[ci][1],Colors[ci][2],1.f);
-            mMatrix[12]=-2.5+(i<HALF_TEAPOT_MESH_COUNT ? 0 : 5);
-            mMatrix[13]=0.0;
-            if (i==0)                           mMatrix[14]=-HALF_TEAPOT_MESH_COUNT*0.15f;
-            else if (i==HALF_TEAPOT_MESH_COUNT) mMatrix[14]=-HALF_TEAPOT_MESH_COUNT*0.50f;
-            else mMatrix[14]+=0.8f;
-            Teapot_Draw(mMatrix,i);
-        }
-        // Please note that, unlike all the other meshes, the last two meshes: TEAPOT_MESH_HALF_SPHERE_UP and TEAPOT_MESH_HALF_SPHERE_DOWN
-        // are always centered in the virtual center of their full sphere (regardless of the TEAPOT_CENTER_MESHES_ON_FLOOR definition):
-        // they're there mainly for internal use when drawing: TEAPOT_MESH_CAPSULE
-    }*/
 
     Teapot_PostDraw();  // We can't call the Teapot_XXX methods used above anymore
-    
+    imPopMatrix();  // Optional scope
 
 if (config.show_fps) {
     if ((elapsed_time/1000)%2==0)   {
@@ -543,8 +466,8 @@ static void resetCamera() {
     // You can set the initial camera position here through:
     targetPos[0]=0; targetPos[1]=0; targetPos[2]=0; // The camera target point
     cameraYaw = 2*M_PI;                             // The camera rotation around the Y axis
-    cameraPitch = M_PI*0.125f;                      // The camera rotation around the XZ plane
-    cameraDistance = 5;                             // The distance between the camera position and the camera target point
+    cameraPitch = M_PI*0.14f;                       // The camera rotation around the XZ plane
+    cameraDistance = 6;                             // The distance between the camera position and the camera target point
 
     updateCameraPos();
 }
@@ -597,8 +520,8 @@ void GlutSpecialKeys(int key,int x,int y)
             tpoat up[3] = {0,1,0};
             tpoat left[3];
 
-            Vec3Normalize(forward);
-            Vec3Cross(left,up,forward);
+            IMVector3Normalize(forward);
+            IMVector3Cross(left,up,forward);
             {
                 tpoat delta[3] = {0,0,0};int i;
                 if (key==GLUT_KEY_LEFT || key==GLUT_KEY_RIGHT) {
@@ -678,7 +601,7 @@ void GlutCreateWindow() {
         config.fullscreen_enabled = 0;
         glutInitWindowPosition(100,100);
         glutInitWindowSize(config.windowed_width,config.windowed_height);
-        windowId = glutCreateWindow("test_teapot.c");
+        windowId = glutCreateWindow("test_matrix_stack.c");
     }
 
     glutKeyboardFunc(GlutNormalKeys);
