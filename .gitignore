@@ -73,8 +73,10 @@ Tests/test_shadows
 Tests/test_teapot
 Tests/test_matrix_stack
 Tests/test_im
+Tests/test_sdf
 glImmediateMode.h
 obj.h
+Sdf/
 
 
 
