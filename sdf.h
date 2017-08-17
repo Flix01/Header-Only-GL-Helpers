@@ -129,6 +129,8 @@ struct SdfCharsetProperties {
 // Tip: load the texture into fntTexture (owned by you), before calling these methods
 struct SdfCharset* SdfAddCharsetFromFile(const char* fntFilePath,GLuint fntTexture,const SdfCharsetProperties& properties=SdfCharsetProperties(),bool charsetWillDeleteFntTexture=false);
 struct SdfCharset* SdfAddCharsetFromMemory(const void* data,unsigned int data_size,GLuint fntTexture,const SdfCharsetProperties& properties=SdfCharsetProperties(),bool charsetWillDeleteFntTexture=false);
+// Same as above, except that the texture is created internally from a 32 bit raw RGBA image (with no additional stride). It must be: sizeof(fntRGBAData)=4*fntRGBAWidth*fntRGBAHeight
+struct SdfCharset* SdfAddCharsetAndTextureFromMemory(const void* fntData,unsigned int fntDataSize,const void* fntRGBAData,int fntRGBAWidth,int fntRGBAHeight,const SdfCharsetProperties& properties=SdfCharsetProperties());
 #ifndef SDF_NO_EMBEDDED_FONT
 // In this case a fntTexture is always handled for you (and destroyed in the SdfCharset destructor)
 struct SdfCharset* SdfAddDefaultCharset(const SdfCharsetProperties& properties=SdfCharsetProperties());
@@ -347,7 +349,7 @@ inline void operator delete(void*, SdfPlacementNewDummy, void*) {}
 
 #ifndef SDF_NO_NAMESPACE
 namespace Sdf {
-#endif //#ifndef SDF_NO_NAMESPACE
+#endif //SDF_NO_NAMESPACE
 
 class UTF8Helper {
     /* All the code in this class is based on the code found at: http://bjoern.hoehrmann.de/utf-8/decoder/dfa/
@@ -1929,11 +1931,8 @@ SdfCharset* SdfAddCharsetFromMemory(const void* data,unsigned int data_size,GLui
     gSdfInit.gSdfCharsets.push_back(p);
     return p;
 }
-#ifndef SDF_NO_EMBEDDED_FONT
-SdfCharset* SdfAddDefaultCharset(const SdfCharsetProperties& properties) {
-    SdfVector<char> fntData;SdfVector<unsigned char> rgba;int w,h;
-    if (!SdfCharset::GetEmbeddedFontData(fntData,rgba,w,h)) return NULL;
-    if (fntData.size()==0 || rgba.size()<4 || w<=0 || h<=0) return NULL;
+SdfCharset* SdfAddCharsetAndTextureFromMemory(const void* fntData,unsigned int fntDataSize,const void* fntRGBAData,int fntRGBAWidth,int fntRGBAHeight,const SdfCharsetProperties& properties)   {
+    if (!fntData || fntDataSize==0 || !fntRGBAData || fntRGBAWidth<=0 || fntRGBAHeight<=0) return NULL;
     GLuint fntTexture = 0;
 
     glGenTextures(1,&fntTexture);
@@ -1962,11 +1961,19 @@ SdfCharset* SdfAddDefaultCharset(const SdfCharsetProperties& properties) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
     //glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, &rgba[0]);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, fntRGBAWidth, fntRGBAHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, fntRGBAData);
     glBindTexture(GL_TEXTURE_2D,0);
 
-    SdfCharset* cs = SdfAddCharsetFromMemory(&fntData[0],fntData.size(),fntTexture,properties,true);
-    return cs;
+    return SdfAddCharsetFromMemory(fntData,fntDataSize,fntTexture,properties,true);
+}
+
+#ifndef SDF_NO_EMBEDDED_FONT
+SdfCharset* SdfAddDefaultCharset(const SdfCharsetProperties& properties) {
+    SdfVector<char> fntData;SdfVector<unsigned char> rgba;int w,h;
+    if (!SdfCharset::GetEmbeddedFontData(fntData,rgba,w,h)) return NULL;
+    if (fntData.size()==0 || rgba.size()<4 || w<=0 || h<=0) return NULL;
+
+    return SdfAddCharsetAndTextureFromMemory((void*) &fntData[0],fntData.size(),(void*)&rgba[0],w,h,properties);
 }
 #endif //SDF_NO_EMBEDDED_FONT
 

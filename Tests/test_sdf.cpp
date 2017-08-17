@@ -97,11 +97,6 @@ for glut.h, glew.h, etc. with something like:
 #define SDF_IMPLEMENTATION
 #include "sdf.h"
 
-//#define LOAD_FNT_FROM_FILE
-#ifdef LOAD_FNT_FROM_FILE       // files are missing, but might be used as a template
-#define STB_IMAGE_IMPLEMENTATION
-#include "reps/Sdf/stb_image.h" // missing
-#endif //LOAD_FNT_FROM_FILE
 
 // Config file handling: basically there's an .ini file next to the
 // exe that you can tweak. (it's just an extra)
@@ -340,59 +335,14 @@ void InitGL(void) {
     // That's way we can avoid calling ResizeGL(...) here
     // However in other demos it might be mandatory to call ResizeGL(...) here
 
-
-#ifdef LOAD_FNT_FROM_FILE
-    {
-    GLuint fntTexture = 0;
-    glGenTextures(1,&fntTexture);
-    glBindTexture(GL_TEXTURE_2D,fntTexture);
-    GLenum clampEnum = 0x2900;    // 0x2900 -> GL_CLAMP; 0x812F -> GL_CLAMP_TO_EDGE
-#   ifndef GL_CLAMP
-#       ifdef GL_CLAMP_TO_EDGE
-        clampEnum = GL_CLAMP_TO_EDGE;
-#       else //GL_CLAMP_TO_EDGE
-        clampEnum = 0x812F;
-#       endif // GL_CLAMP_TO_EDGE
-#   else //GL_CLAMP
-    clampEnum = GL_CLAMP;
-#   endif //GL_CLAMP
-#   if (defined(__EMSCRIPTEN__) || defined(SDFIMPL_SHADER_GLES))
-#       ifdef GL_CLAMP_TO_EDGE
-        clampEnum = GL_CLAMP_TO_EDGE;   // Well, WebGL2, OpenGLES2 and upper should have this
-#       endif //GL_CLAMP_TO_EDGE
-#   endif
-    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,clampEnum);
-    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,clampEnum);
-    //const GLfloat borderColor[]={0.f,0.f,0.f,1.f};glTexParameterfv(GL_TEXTURE_2D,GL_TEXTURE_BORDER_COLOR,borderColor);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    //glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    int w=0,h=0,c=0;
-    unsigned char* im = stbi_load("reps/Sdf/DejaVuSerifCondensed-Bold.png",&w,&h,&c,0);
-    printf("(%dx%dx%d)\n",w,h,c);
-    if (!im) {exit(0);}
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, im);
-    stbi_image_free(im);
-    glBindTexture(GL_TEXTURE_2D,0);
-
-    gDefaultCharset = Sdf::SdfAddCharsetFromFile("reps/Sdf/DejaVuSerifCondensed-Bold.fnt",fntTexture,Sdf::SdfCharsetProperties(),true);
-    /*{
-        SdfVector<unsigned char> rgba;SdfVector<char> fntData;int w,h;
-        Sdf::SdfCharset::GetEmbeddedFontData(fntData,rgba,w,h);
-        gDefaultCharset = Sdf::SdfAddCharsetFromMemory(&fntData[0],fntData.size(),fntTexture,Sdf::SdfCharsetProperties(),true);
-    }*/
-    }
-#else //LOAD_FNT_FROM_FILE
     gDefaultCharset = Sdf::SdfAddDefaultCharset();
-#endif //LOAD_FNT_FROM_FILE
     if (!gDefaultCharset) {printf("Error: Sdf::SdfAddDefaultCharset()=NULL.\n");exit(0);}
-    //else {printf("gDefaultCharset->textureID = %d\n",(int)Sdf::SdfCharsetGetFontTextureID(gDefaultCharset));fflush(stdout);}
 
     static Sdf::SdfTextChunkProperties gTextProperties[gNumTextChunks];
     for (unsigned int i=0;i<gNumTextChunks;i++) {
         if (i<4)    {
             Sdf::SdfTextChunkProperties& tp = gTextProperties[i];
-            tp.maxNumTextLines=24;
+            tp.maxNumTextLines=24;  // This is the font size expressed in num lines to fill the whole desktop screen
             tp.halign = Sdf::SDF_JUSTIFY;
             tp.boundsHalfSize = Sdf::Vec2(0.24f,0.24f);
             if (i==0 || i==2)   tp.boundsCenter.x = 0.25f;
@@ -400,6 +350,7 @@ void InitGL(void) {
             if (i==0 || i==1)   tp.boundsCenter.y = 0.25f;
             else                tp.boundsCenter.y = 0.75f;
         }
+        if (i==4) gTextProperties[4].maxNumTextLines = 15;  // Bigger font size for "Time"
 
         int sdfBufferType = (i%2==0) ? Sdf::SDF_BT_OUTLINE : Sdf::SDF_BT_REGULAR;
         //int sdfBufferType = Sdf::SDF_BT_OUTLINE;
@@ -416,7 +367,7 @@ void InitGL(void) {
         // Optional
         if (i<4) {
             Sdf::SdfTextChunk* tc = gTextChunks[i];
-            const Sdf::SDFAnimationMode am = i==0 ? Sdf::SDF_AM_APPEAR_IN : (i==1 ? Sdf::SDF_AM_TOP_IN : (i==2 ? Sdf::SDF_AM_ZOOM_IN : Sdf::SDF_AM_RIGHT_IN));
+            const Sdf::SDFAnimationMode am = i==0 ? Sdf::SDF_AM_LEFT_IN : (i==1 ? Sdf::SDF_AM_TOP_IN : (i==2 ? Sdf::SDF_AM_ZOOM_IN : Sdf::SDF_AM_BOTTOM_IN));
             Sdf::SdfTextChunkSetAnimationMode(tc,am);
         }
     }
