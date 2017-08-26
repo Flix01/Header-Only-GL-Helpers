@@ -332,7 +332,7 @@ void InitGL(void) {
 #   endif
 
     // Warning: in this demo we know that the calling order of the callbacks is: InitGL(),ResizeGL(...),DrawGL().
-    // That's way we can avoid calling ResizeGL(...) here
+    // That's why we can avoid calling ResizeGL(...) here
     // However in other demos it might be mandatory to call ResizeGL(...) here
 
     gDefaultCharset = Sdf::SdfAddDefaultCharset();
@@ -372,7 +372,7 @@ void InitGL(void) {
         }
     }
 
-    // This is just to show that the ebedded 256x256 pixels font includes European glyph (not all!) that are specific to some languages:
+    // This is just to show that the ebedded 256x256 pixels font includes European glyphs (not all!) that are specific to some languages:
     Sdf::SdfAddTextWithTags(gTextChunks[0],"<scale=2><color=FF0000FF>English</color></scale>\nThy song, nor ever can those trees be bare;\nBold Lover, never, never canst thou kiss,\nThough winning near the goal yet, do not grieve;\nShe cannot fade, though thou hast not thy bliss,\nFor ever wilt thou love, and she be fair!");
     Sdf::SdfAddTextWithTags(gTextChunks[1],"<scale=2><color=FF0000FF>Italian</color></scale>\nÈ questo, Brandimarte, è questo il regno\ndi che pigliar lo scettro ora dovevi?\nOr così teco a Dammogire io vegno?\ncosì nel real seggio mi ricevi?\nAh Fortuna crudel, quanto disegno\nmi rompi! oh che speranze oggi mi levi!\nDeh, che cesso io, poi c’ho perduto questo\ntanto mio ben, ch’io non perdo anco il resto?");
     Sdf::SdfAddTextWithTags(gTextChunks[2],"<scale=2><color=FF0000FF>German</color></scale>\nDie Gassen verließ ich, vom Wächter bewacht,\nDurchwandelte sacht\nIn der Nacht, in der Nacht,\nDas Tor mit dem gotischen Bogen.\nDer Mühlbach rauschte durch felsigen Schacht,\nIch lehnte mich über die Brücke,\nTief unter mir nahm ich der Wogen in acht,\nDie wallten so sacht\nIn der Nacht, in der Nacht,\nDoch wallte nicht eine zurücke.");

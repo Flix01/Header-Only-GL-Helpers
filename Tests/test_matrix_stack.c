@@ -254,7 +254,7 @@ void InitGL(void) {
     // The truth is that for every object it's tedious to setup 3 colors (even if we'd get better visuals): so this definition is useful.
 
     // Warning: in this demo we know that the calling order of the callbacks is: InitGL(),ResizeGL(...),DrawGL().
-    // That's way we can avoid calling ResizeGL(...) here
+    // That's why we can avoid calling ResizeGL(...) here
     // However in other demos it might be mandatory to call ResizeGL(...) here
 
 }

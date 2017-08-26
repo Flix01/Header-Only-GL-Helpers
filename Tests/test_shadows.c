@@ -419,7 +419,7 @@ void InitGL(void) {
     // The truth is that for every object it's tedious to setup 3 colors (even if we'd get better visuals): so this definition is useful.
 
     // Warning: in this demo we know that the calling order of the callbacks is: InitGL(),ResizeGL(...),DrawGL().
-    // That's way we can avoid calling ResizeGL(...) here
+    // That's why we can avoid calling ResizeGL(...) here
     // However in other demos it might be mandatory to call ResizeGL(...) here
 
     // Allocate meshes
@@ -793,23 +793,25 @@ As a bonus, if you do all the above, you're well on your way to implementing cas
         Teapot_Draw_Mv(md->mvMatrix,TEAPOT_MESHLINES_CUBE_EDGES);
     }*/
 
+    // We can add a pivot at the camera target point
+    {
+        static float mMatrix[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+        mMatrix[12]=targetPos[0];mMatrix[13]=targetPos[1];mMatrix[14]=targetPos[2];
+        Teapot_SetColor(0.5,0.5,0,1); // the color of the center of the pivot (and for the pivot mesh only there's a hack that transfers the brightness of this color to the whole mesh)
+        Teapot_SetScaling(0.4,0.4,0.4);
+        // Tip: We can change the outline color/params with Teapot_Set_MeshOutline_XXX(...) methods
+        Teapot_Enable_MeshOutline();  // This does not work together with glDisable(GL_DEPTH_TEST);
+        //glDisable(GL_DEPTH_TEST);
+        Teapot_Draw(mMatrix,TEAPOT_MESH_PIVOT3D);
+        //glEnable(GL_DEPTH_TEST);
+        Teapot_Disable_MeshOutline();
+    }
+
     // Here we draw all our pMeshData
     Teapot_DrawMulti_Mv(pMeshData,numMeshData,1);    // Here we don't use Teapot_DrawMulti(...) cause we got the MvMatrices already (see Teapot_MeshData_CalculateMvMatrixFromArray(pMeshData,numMeshData); above)
                                                      // This way we could have used mvMatrices in the shadow map creation (we haven't done it AFAIR)
                                                      // Please note that to handle transparent objects correctly, it can change the object order (see last argument). So to detect an object, just store pointers and don't realloc the initial buffer (see that we have maxNumMeshData>=numMeshData)
 
-    // We can add a pivot at the camera target point
-    /*{
-        static float mMatrix[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
-        mMatrix[12]=targetPos[0];mMatrix[13]=targetPos[1];mMatrix[14]=targetPos[2];
-        Teapot_SetColor(1,1,0.5,1); // Just the color of the center of the pivot
-        Teapot_SetScaling(0.4,0.4,0.4);
-        //Teapot_Enable_MeshOutline();  // This does not work together with glDisable(GL_DEPTH_TEST);
-        glDisable(GL_DEPTH_TEST);
-        Teapot_Draw(mMatrix,TEAPOT_MESH_PIVOT3D);
-        glEnable(GL_DEPTH_TEST);
-        //Teapot_Disable_MeshOutline();
-    }*/
 
 #   ifdef TEAPOT_SHADER_USE_SHADOW_MAP
     glBindTexture(GL_TEXTURE_2D,0);

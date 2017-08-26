@@ -992,6 +992,8 @@ void Teapot_Draw_Mv(const tpoat mvMatrix[16], TeapotMeshEnum meshId)    {
             // [78-102]24 tri-faces: Arrow>   (0.000,0.000,0.875)
             int startInds = TIS.startInds[meshId];
             const int numInds[4] = {90,72,72,72};
+            float brightness = (0.35f*TIS.color[0]+0.5f*TIS.color[1]+0.15f*TIS.color[2])*1.25f;
+            if (brightness>1.f) brightness=1.f;
 
             if (TIS.meshOutlineEnabled && TIS.colorMeshOutline[3]>0)
             {
@@ -1016,15 +1018,15 @@ void Teapot_Draw_Mv(const tpoat mvMatrix[16], TeapotMeshEnum meshId)    {
             glDrawElements(GL_TRIANGLES,numInds[0],GL_UNSIGNED_SHORT,(const void*) (startInds*sizeof(unsigned short)));
             startInds+=numInds[0];
 
-            glUniform4f(TIS.uLoc_colorAmbient,0.875,0,0,0);
+            glUniform4f(TIS.uLoc_colorAmbient,0.875*brightness,0,0,0);
             glDrawElements(GL_TRIANGLES,numInds[1],GL_UNSIGNED_SHORT,(const void*) (startInds*sizeof(unsigned short)));
             startInds+=numInds[1];
 
-            glUniform4f(TIS.uLoc_colorAmbient,0,0.875,0,0);
+            glUniform4f(TIS.uLoc_colorAmbient,0,0.875*brightness,0,0);
             glDrawElements(GL_TRIANGLES,numInds[2],GL_UNSIGNED_SHORT,(const void*) (startInds*sizeof(unsigned short)));
             startInds+=numInds[2];
 
-            glUniform4f(TIS.uLoc_colorAmbient,0,0,0.875,0);
+            glUniform4f(TIS.uLoc_colorAmbient,0,0,0.875*brightness,0);
             glDrawElements(GL_TRIANGLES,numInds[3],GL_UNSIGNED_SHORT,(const void*) (startInds*sizeof(unsigned short)));
             startInds+=numInds[3];
             //if (startInds!=TIS.startInds[meshId]+TIS.numInds[meshId]) {printf("ERROR: startInds(=%d)!=TIS.startInds[%d](=%d)+TIS.numInds[%d](=%d)\n",startInds,(int)meshId,TIS.startInds[meshId],(int)meshId,TIS.numInds[meshId]);exit(1);}
