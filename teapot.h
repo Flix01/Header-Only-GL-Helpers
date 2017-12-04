@@ -127,7 +127,7 @@ typedef enum {
     TEAPOT_MESH_CUBE,
     TEAPOT_MESH_CUBIC_GROUND,           // Top face is made by 5x5 vertices
     TEAPOT_MESH_CYLINDER,
-    TEAPOT_MESH_CONE,
+    TEAPOT_MESH_CONE1,
     TEAPOT_MESH_CONE2,                  // Better quality
     TEAPOT_MESH_PYRAMID,
     TEAPOT_MESH_ROOF,
@@ -221,7 +221,7 @@ static __inline void Teapot_MeshData_SetScaling(Teapot_MeshData* md,float scalin
 static __inline void Teapot_MeshData_SetColor(Teapot_MeshData* md,float R,float G,float B,float A) {md->color[0]=R;md->color[1]=G;md->color[2]=B;md->color[3]=A;}
 static __inline void Teapot_MeshData_SetColorAmbient(Teapot_MeshData* md,float R,float G,float B) {md->colorAmbient[0]=R;md->colorAmbient[1]=G;md->colorAmbient[2]=B;}
 #ifdef TEAPOT_SHADER_SPECULAR
-static __inline void Teapot_DrawMultiTeapot_MeshData_SetColorSpecular(Teapot_MeshData* md,float R, float G, float B, float SHI) {md->colorSpecular[0]=R;md->colorSpecular[1]=G;md->colorSpecular[2]=B;md->colorSpecular[3]=SHI;}
+static __inline void Teapot_MeshData_SetColorSpecular(Teapot_MeshData* md,float R, float G, float B, float SHI) {md->colorSpecular[0]=R;md->colorSpecular[1]=G;md->colorSpecular[2]=B;md->colorSpecular[3]=SHI;}
 #endif //TEAPOT_SHADER_SPECULAR
 static __inline void Teapot_MeshData_SetOutlineEnabled(Teapot_MeshData* md,int meshOutlineEnabled) {md->outlineEnabled=meshOutlineEnabled;}
 static __inline void Teapot_MeshData_SetMeshId(Teapot_MeshData* md,TeapotMeshEnum meshId) {md->meshId = meshId;}
@@ -377,6 +377,18 @@ void Teapot_LowLevel_UnbindShaderProgram(void);
 void Teapot_LowLevel_UnbindVertexBufferObject(void);
 void Teapot_LowLevel_DisableVertexAttributes(int disableVertexAttribArray,int disableNormalAttribArray); // args are bool variables (0 or 1)
 
+#if (defined(DYNAMIC_RESOLUTION_H) && defined(TEAPOT_SHADER_USE_SHADOW_MAP))
+#if ((defined(DYNAMIC_RESOLUTION_USE_DOUBLE_PRECISION) && defined(TEAPOT_USE_DOUBLE_PRECISION)) || (!defined(DYNAMIC_RESOLUTION_USE_DOUBLE_PRECISION) && !defined(TEAPOT_USE_DOUBLE_PRECISION)))
+// lpvMatrix16 = lpMatrix16 * lvMatrix16 (light projection and view matrices)
+void Teapot_MeshData_HiLevel_Draw_Shadow_Map_Vp(Teapot_MeshData** pMeshData,int numMeshData,const tpoat* lvpMatrix16, float transparent_threshold);
+// Not always faster (overhead + no BVH). Anyway use: Teapot_Helper_GetFrustumPlaneEquations(vpMatrixFrustumPlaneEquations,lvpMatrix16,0);
+void Teapot_MeshData_HiLevel_Draw_Shadow_Map_Vp_With_Frustum_Culling(Teapot_MeshData** pMeshData,int numMeshData,const tpoat* lvpMatrix16, const tpoat lvpMatrixFrustumPlaneEquations[6][4], float transparent_threshold);
+static __inline void Teapot_MeshData_HiLevel_Draw_Shadow_Map(Teapot_MeshData** pMeshData,int numMeshData,const tpoat* lpMatrix16, const tpoat* lvMatrix16, float transparent_threshold) {
+    tpoat lpvMatrix16[16];Teapot_Helper_MultMatrix(lpvMatrix16,lpMatrix16,lvMatrix16);
+    Teapot_MeshData_HiLevel_Draw_Shadow_Map_Vp(pMeshData,numMeshData,lpvMatrix16,transparent_threshold);
+}
+#endif
+#endif
 
 #ifdef __cplusplus
 }
@@ -1626,6 +1638,109 @@ void Teapot_Set_Init_Callback(TeapotInitCallback callback)  {gTeapotInitCallback
 
 void Teapot_Set_Init_UserMeshCallback(TeapotInitUserMeshCallback callback) {gTeapotInitUserMeshCallback = callback;}
 
+#if (defined(DYNAMIC_RESOLUTION_H) && defined(TEAPOT_SHADER_USE_SHADOW_MAP))
+#if ((defined(DYNAMIC_RESOLUTION_USE_DOUBLE_PRECISION) && defined(TEAPOT_USE_DOUBLE_PRECISION)) || (!defined(DYNAMIC_RESOLUTION_USE_DOUBLE_PRECISION) && !defined(TEAPOT_USE_DOUBLE_PRECISION)))
+static void Teapot_MeshData_HiLevel_Draw_Shadow_Map_Vp_Internal(Teapot_MeshData** pMeshData,int numMeshData,const tpoat* lvpMatrix16,const tpoat lvpMatrixFrustumPlaneEquations[6][4],float transparent_threshold, int use_frustum_culling)
+{
+    int i;
+    Dynamic_Resolution_Bind_Shadow();   // Binds the shadow map FBO and its shader program
+    glClear(GL_DEPTH_BUFFER_BIT);
+    Dynamic_Resolution_Shadow_Set_VpMatrix(lvpMatrix16);  // lvpMatrix16 is good if we can use mMatrix below. If we MUST use mvMatrix below, here we must pass (lvpMatrix * cameraViewMatrixInverse). Please see Dynamic_Resolution_MultMatrix(...) and Teapot_GetViewMatrixInverse(...) methods.
+    Teapot_LowLevel_BindVertexBufferObject();
+    for (i=0;i<numMeshData;i++) {
+        const Teapot_MeshData* md = pMeshData[i];
+        TeapotMeshEnum meshId = md->meshId;
+        if (md->color[3]>=transparent_threshold && meshId<TEAPOT_MESH_PIVOT3D)
+        {
+            if (use_frustum_culling) {
+            // We could enable frustum culling here too...
+            // but we don't... it's something manual...
+            // (we must extract the shadow frustum planes and then call Teapot_Helper_IsVisible(...).
+            // Please see Teapot_Helper_GetFrustumPlaneEquations(...);)
+
+                if (meshId<TEAPOT_MESH_TEXT_X || meshId>TEAPOT_MESH_TEXT_Z) {
+                    const float* scaling = md->scaling;
+                    const float aabbMin[3] = {TIS.aabbMin[meshId][0]*scaling[0],TIS.aabbMin[meshId][1]*scaling[1],TIS.aabbMin[meshId][2]*scaling[2]};
+                    const float aabbMax[3] = {TIS.aabbMax[meshId][0]*scaling[0],TIS.aabbMax[meshId][1]*scaling[1],TIS.aabbMax[meshId][2]*scaling[2]};
+                    //tpoat matrix[16];Teapot_Helper_InvertFast(matrix,mvMatrix);
+
+                    if (!Teapot_Helper_IsVisible(lvpMatrixFrustumPlaneEquations,
+                                                 md->mMatrix,
+                                                 aabbMin[0],aabbMin[1],aabbMin[2],
+                                                 aabbMax[0],aabbMax[1],aabbMax[2]))
+                    {
+                        //fprintf(stderr,"MeshId=%d\n",meshId);
+                        continue;
+                    }
+                }
+            }
+
+
+            if (meshId==TEAPOT_MESH_CAPSULE) {
+                // unluckily TEAPOT_MESH_CAPSULE is special... sorry!
+                // We don't want to draw "scaled" capsules. Instead we want to regenerate valid capsules, reinterpreting Teapot_SetScaling(...)
+#               if (!defined(TEAPOT_NO_MESH_CYLINDER) && !defined(TEAPOT_NO_MESH_HALF_SPHERE_UP) && !defined(TEAPOT_NO_MESH_HALF_SPHERE_DOWN))
+                const float height = md->scaling[1];
+                const float diameter = (md->scaling[0]+md->scaling[2])*0.5f;
+                const float yAxis[3] = {md->mMatrix[4],md->mMatrix[5],md->mMatrix[6]};
+                float tmp,mat[16];
+                float origin[3] = {md->mMatrix[12],md->mMatrix[13],md->mMatrix[14]};
+                float center[3];Teapot_GetMeshAabbCenter(TEAPOT_MESH_CYLINDER_LATERAL_SURFACE,center);
+                center[1]=-center[1];   //
+                origin[1]-=diameter*center[1];
+
+                memcpy(mat,md->mMatrix,sizeof(mat));
+                mat[12] = origin[0];    mat[13] = origin[1];    mat[14] = origin[2];
+                Dynamic_Resolution_Shadow_Set_Scaling(diameter,height,diameter);
+                Dynamic_Resolution_Shadow_Set_MMatrix(mat); // mMatrix here (or mvMatrix if we had called above Dynamic_Resolution_Shadow_Set_VpMatrix(lCombined * cameraViewMatrixInverse);)
+                Teapot_LowLevel_DrawElements(TEAPOT_MESH_CYLINDER_LATERAL_SURFACE);
+
+                // TEAPOT_MESH_HALF_SPHERE_UP and TEAPOT_MESH_HALF_SPHERE_DOWN are not affected by TEAPOT_CENTER_MESHES_ON_FLOOR
+                Dynamic_Resolution_Shadow_Set_Scaling(diameter,diameter,diameter);
+                tmp = height*(0.5f-center[1]);
+                mat[12] = origin[0] + yAxis[0]*tmp;
+                mat[13] = origin[1] + yAxis[1]*tmp;
+                mat[14] = origin[2] + yAxis[2]*tmp;
+                Dynamic_Resolution_Shadow_Set_MMatrix(mat); // mMatrix here (or mvMatrix if we had called above Dynamic_Resolution_Shadow_Set_VpMatrix(lCombined * cameraViewMatrixInverse);)
+                Teapot_LowLevel_DrawElements(TEAPOT_MESH_HALF_SPHERE_UP);
+
+                tmp = -height*(0.5f+center[1]);
+                mat[12] = origin[0] + yAxis[0]*tmp;
+                mat[13] = origin[1] + yAxis[1]*tmp;
+                mat[14] = origin[2] + yAxis[2]*tmp;
+                Dynamic_Resolution_Shadow_Set_MMatrix(mat); // mMatrix here (or mvMatrix if we had called above Dynamic_Resolution_Shadow_Set_VpMatrix(lCombined * cameraViewMatrixInverse);)
+                Teapot_LowLevel_DrawElements(TEAPOT_MESH_HALF_SPHERE_DOWN);
+#               endif // !defined(...)
+                continue;
+            }
+
+            // (Opt) Simplify meshes
+            if (meshId==TEAPOT_MESH_SPHERE2)    meshId=TEAPOT_MESH_SPHERE1;
+            else if (meshId==TEAPOT_MESH_CONE2) meshId=TEAPOT_MESH_CONE1;
+            else if (meshId==TEAPOT_MESH_CUBIC_GROUND)  meshId=TEAPOT_MESH_CUBE;
+            // End (Opt)
+
+            Dynamic_Resolution_Shadow_Set_MMatrix(md->mMatrix); // mMatrix here (or mvMatrix if we had called above Dynamic_Resolution_Shadow_Set_VpMatrix(lvpMatrix * cameraViewMatrixInverse);)
+            Dynamic_Resolution_Shadow_Set_Scaling(md->scaling[0],md->scaling[1],md->scaling[2]);
+            Teapot_LowLevel_DrawElements(meshId);
+        }
+    }
+    Teapot_LowLevel_UnbindVertexBufferObject();
+    Dynamic_Resolution_Unbind_Shadow();   // Unbinds the shadow map FBO and its shader program
+
+    Teapot_SetShadowVpMatrix(lvpMatrix16);    // Needed for the second shadowing pass (enabled with the definition: TEAPOT_SHADER_USE_SHADOW_MAP). Note that here we can't pass (lvpMatrix * cameraViewMatrixInverse), but just lvpMatrix (because the multiplication happens internally).
+    Teapot_SetShadowMapFactor(Dynamic_Resolution_GetShadowMapDynResFactor());   // The shadow map has dynamic resolution too. That means that in the shader used in "teapot.h" there's an additional float uniform that must be updated from "dynamic_resolution.h"
+    glBindTexture(GL_TEXTURE_2D,Dynamic_Resolution_Get_Shadow_Texture_ID());
+}
+void Teapot_MeshData_HiLevel_Draw_Shadow_Map_Vp(Teapot_MeshData** pMeshData,int numMeshData,const tpoat* lvpMatrix16, float transparent_threshold)  {
+    static const tpoat dummy[6][4];
+    Teapot_MeshData_HiLevel_Draw_Shadow_Map_Vp_Internal(pMeshData,numMeshData,lvpMatrix16,dummy,transparent_threshold,0);
+}
+void Teapot_MeshData_HiLevel_Draw_Shadow_Map_Vp_With_Frustum_Culling(Teapot_MeshData** pMeshData,int numMeshData,const tpoat* lvpMatrix16,const tpoat lvpMatrixFrustumPlaneEquations[6][4], float transparent_threshold) {
+    Teapot_MeshData_HiLevel_Draw_Shadow_Map_Vp_Internal(pMeshData,numMeshData,lvpMatrix16,lvpMatrixFrustumPlaneEquations,transparent_threshold,1);
+}
+#endif
+#endif
 
 void Teapot_Init(void) {
     int i,j;
@@ -2240,7 +2355,7 @@ void Teapot_Init(void) {
 #               endif
             }
                 break;
-            case TEAPOT_MESH_CONE: {
+            case TEAPOT_MESH_CONE1: {
 #               ifndef TEAPOT_NO_MESH_CONE
                 {
                     const float A=0.5,B=0.499955,C=0.365992,D=0.133962,E=0.133963,F=0.0,G=0.365993;

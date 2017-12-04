@@ -81,6 +81,12 @@ for glut.h, glew.h, etc. with something like:
 #include <math.h>
 #include <string.h>
 
+// "dynamic_resolution.h" implements the first shadow mapping step and optionally dynamic resolution (that by default should keep frame rate > config.dynamic_resolution_target_fps)
+//#define DYNAMIC_RESOLUTION_USE_GLSL_VERSION_330   // (Optional) Not sure it's faster...
+#define DYNAMIC_RESOLUTION_IMPLEMENTATION           // Mandatory in 1 source file (.c or .cpp)
+#include "dynamic_resolution.h"
+
+
 #define TEAPOT_CENTER_MESHES_ON_FLOOR           // (Optional) Otherwise meshes are centered in their local aabb center
 //#define TEAPOT_INVERT_MESHES_Z_AXIS           // (Optional) Otherwise meshes look in the opposite Z direction
 #define TEAPOT_SHADER_SPECULAR                  // (Optional) specular hilights
@@ -90,12 +96,6 @@ for glut.h, glew.h, etc. with something like:
 #define TEAPOT_ENABLE_FRUSTUM_CULLING           // (Optional) a bit expensive, and does not cull 100% hidden objects. You'd better test if it works and if it's faster...
 #define TEAPOT_IMPLEMENTATION                   // Mandatory in 1 source file (.c or .cpp)
 #include "teapot.h"
-
-
-// "dynamic_resolution.h" implements the first shadow mapping step and optionally dynamic resolution (that by default should keep frame rate > config.dynamic_resolution_target_fps)
-//#define DYNAMIC_RESOLUTION_USE_GLSL_VERSION_330   // (Optional) Not sure it's faster...
-#define DYNAMIC_RESOLUTION_IMPLEMENTATION           // Mandatory in 1 source file (.c or .cpp)
-#include "dynamic_resolution.h"
 
 
 // Optional local definitions
@@ -597,6 +597,7 @@ void DrawGL(void)
 
     Teapot_MeshData_CalculateMvMatrixFromArray(pMeshData,numMeshData);  // This sets every Teapot_MeshData::mvMatrix
 
+#   ifdef TEAPOT_SHADER_USE_SHADOW_MAP
     // Draw to Shadow Map------------------------------------------------------------------------------------------
     {
     // Note: we could just skip this if TEAPOT_SHADER_USE_SHADOW_MAP is not defined,
@@ -608,7 +609,6 @@ void DrawGL(void)
     static float lpMatrix[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
     static float lvMatrix[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
     static float lvpMatrix[16]; // = light_pMatrix*light_vMatrix
-    int i;
     //if (lpMatrix[0]==0)
     {
         // This changes with pMatrixFarPlane and pMatrixFovDeg
@@ -699,73 +699,25 @@ As a bonus, if you do all the above, you're well on your way to implementing cas
         Teapot_Helper_MultMatrix(lvpMatrix,lpMatrix,lvMatrix);
     }
 
+    // There is also a version that takes lpMatrix and lvMatrix and multiplies them
+    // and another version that takes lvpMatrix and its frustum planes and performs frustum culling
+    // (try it, but it's untested and probably slower in many cases)
+    Teapot_MeshData_HiLevel_Draw_Shadow_Map_Vp(pMeshData,numMeshData,lvpMatrix,0.5f);
+    // The HiLevel function above uses parts of dynamic_resolution_h too, but you can unwrap it and use low-level functions as well (see its code).
 
-    Dynamic_Resolution_Bind_Shadow();   // Binds the shadow map FBO and its shader program
-    glClear(GL_DEPTH_BUFFER_BIT);
-    Dynamic_Resolution_Shadow_Set_VpMatrix(lvpMatrix);  // lvpMatrix is good if we can use mMatrix below. If we MUST use mvMatrix below, here we must pass (lvpMatrix * cameraViewMatrixInverse). Please see Dynamic_Resolution_MultMatrix(...) and Teapot_GetViewMatrixInverse(...) methods.
-    Teapot_LowLevel_BindVertexBufferObject();
-    for (i=1;i<numMeshData;i++) {
-        // We can skip i==0: ground plane does not cast any shadow
-        const Teapot_MeshData* md = pMeshData[i];
-        if (md->color[3]>=0.5f && md->meshId<TEAPOT_MESH_PIVOT3D)
-        {
-            // We could enable frustum culling here too...
-            // but we don't... it's something manual...
-            // (we must extract the shadow frustum planes and then call Teapot_Helper_IsVisible(...).
-            // Please see Teapot_Helper_GetFrustumPlaneEquations(...);)
+    // Most noticebly, it wraps functions like:
 
-            if (md->meshId==TEAPOT_MESH_CAPSULE) {
-                // unluckily TEAPOT_MESH_CAPSULE is special... sorry!
-                // We don't want to draw "scaled" capsules. Instead we want to regenerate valid capsules, reinterpreting Teapot_SetScaling(...)
-#               if (!defined(TEAPOT_NO_MESH_CYLINDER) && !defined(TEAPOT_NO_MESH_HALF_SPHERE_UP) && !defined(TEAPOT_NO_MESH_HALF_SPHERE_DOWN))
-                const float height = md->scaling[1];
-                const float diameter = (md->scaling[0]+md->scaling[2])*0.5f;
-                const float yAxis[3] = {md->mMatrix[4],md->mMatrix[5],md->mMatrix[6]};
-                float tmp,mat[16];
-                float origin[3] = {md->mMatrix[12],md->mMatrix[13],md->mMatrix[14]};
-                float center[3];Teapot_GetMeshAabbCenter(TEAPOT_MESH_CYLINDER_LATERAL_SURFACE,center);
-                center[1]=-center[1];   //
-                origin[1]-=diameter*center[1];
+    // Dynamic_Resolution_Bind_Shadow();   // Binds the shadow map FBO and its shader program
+    // Teapot_LowLevel_BindVertexBufferObject();
+    // [...] Teapot_LowLevel_DrawElements(meshId);
+    // Teapot_LowLevel_UnbindVertexBufferObject();
+    // Dynamic_Resolution_Unbind_Shadow();
 
-                memcpy(mat,md->mMatrix,sizeof(mat));
-                mat[12] = origin[0];    mat[13] = origin[1];    mat[14] = origin[2];
-                Dynamic_Resolution_Shadow_Set_Scaling(diameter,height,diameter);
-                Dynamic_Resolution_Shadow_Set_MMatrix(mat); // mMatrix here (or mvMatrix if we had called above Dynamic_Resolution_Shadow_Set_VpMatrix(lCombined * cameraViewMatrixInverse);)
-                Teapot_LowLevel_DrawElements(TEAPOT_MESH_CYLINDER_LATERAL_SURFACE);
-
-                // TEAPOT_MESH_HALF_SPHERE_UP and TEAPOT_MESH_HALF_SPHERE_DOWN are not affected by TEAPOT_CENTER_MESHES_ON_FLOOR
-                Dynamic_Resolution_Shadow_Set_Scaling(diameter,diameter,diameter);
-                tmp = height*(0.5f-center[1]);
-                mat[12] = origin[0] + yAxis[0]*tmp;
-                mat[13] = origin[1] + yAxis[1]*tmp;
-                mat[14] = origin[2] + yAxis[2]*tmp;
-                Dynamic_Resolution_Shadow_Set_MMatrix(mat); // mMatrix here (or mvMatrix if we had called above Dynamic_Resolution_Shadow_Set_VpMatrix(lCombined * cameraViewMatrixInverse);)
-                Teapot_LowLevel_DrawElements(TEAPOT_MESH_HALF_SPHERE_UP);
-
-                tmp = -height*(0.5f+center[1]);
-                mat[12] = origin[0] + yAxis[0]*tmp;
-                mat[13] = origin[1] + yAxis[1]*tmp;
-                mat[14] = origin[2] + yAxis[2]*tmp;
-                Dynamic_Resolution_Shadow_Set_MMatrix(mat); // mMatrix here (or mvMatrix if we had called above Dynamic_Resolution_Shadow_Set_VpMatrix(lCombined * cameraViewMatrixInverse);)
-                Teapot_LowLevel_DrawElements(TEAPOT_MESH_HALF_SPHERE_DOWN);
-#               endif // !defined(...)
-                continue;
-            }
-
-            Dynamic_Resolution_Shadow_Set_MMatrix(md->mMatrix); // mMatrix here (or mvMatrix if we had called above Dynamic_Resolution_Shadow_Set_VpMatrix(lvpMatrix * cameraViewMatrixInverse);)
-            Dynamic_Resolution_Shadow_Set_Scaling(md->scaling[0],md->scaling[1],md->scaling[2]);
-            Teapot_LowLevel_DrawElements(md->meshId);
-        }
+    // And also it sets some uniforms to shaders in both dynamic_resolution_h and teapot_h
+    // And finally it also calls:
+    // glBindTexture(GL_TEXTURE_2D,Dynamic_Resolution_Get_Shadow_Texture_ID());    // For the 2nd part of the shadow map algorithm
     }
-    Teapot_LowLevel_UnbindVertexBufferObject();
-    Dynamic_Resolution_Unbind_Shadow();   // Unbinds the shadow map FBO and its shader program
-
-#   ifdef TEAPOT_SHADER_USE_SHADOW_MAP
-    Teapot_SetShadowVpMatrix(lvpMatrix);    // Needed for the second shadowing pass (enabled with the definition: TEAPOT_SHADER_USE_SHADOW_MAP). Note that here we can't pass (lvpMatrix * cameraViewMatrixInverse), but just lvpMatrix (because the multiplication happens internally).
-    Teapot_SetShadowMapFactor(Dynamic_Resolution_GetShadowMapDynResFactor());   // The shadow map has dynamic resolution too. That means that in the shader used in "teapot.h" there's an additional float uniform that must be updated from "dynamic_resolution.h"
 #   endif //TEAPOT_SHADER_USE_SHADOW_MAP
-    }
-
 
     // Render to framebuffer---------------------------------------------------------------------------------------
     Dynamic_Resolution_Bind();  // This defaults to nothing if we don't use dynamic resolution (-> it's for free: we can draw inside it as usual)
@@ -773,10 +725,6 @@ As a bonus, if you do all the above, you're well on your way to implementing cas
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     Teapot_PreDraw();
-
-#   ifdef TEAPOT_SHADER_USE_SHADOW_MAP
-    glBindTexture(GL_TEXTURE_2D,Dynamic_Resolution_Get_Shadow_Texture_ID());    // For the 2nd part of the shadow map algorithm
-#   endif //TEAPOT_SHADER_USE_SHADOW_MAP
 
     // We can add an aabb frame around any object
     /*{

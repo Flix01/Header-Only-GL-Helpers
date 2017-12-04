@@ -58,6 +58,10 @@ typedef double droat;
 #define M_180OVERPI (180.0/3.14159265358979323846)
 #endif
 
+#ifdef TEAPOT_H_
+#   error Please include dynamic_resolution_h BEFORE teapot_h so you can use additional functions inside teapot_h
+#endif
+
 // In InitGL() or similar
 void Dynamic_Resolution_Init(float desiredFPS, int enabled);
 // In InitGL() and/or ResizeGL() or similar
@@ -162,7 +166,7 @@ extern "C"	{
 //
 //----------------------------------------------------------------------------------
 
-__inline static void Dynamic_Resolution_Helper_GlUniformMatrix4v(GLint location,GLsizei count,GLboolean transpose,const tpoat* value) {
+__inline static void Dynamic_Resolution_Helper_GlUniformMatrix4v(GLint location,GLsizei count,GLboolean transpose,const droat* value) {
     const float* fvalue = NULL;
 #   ifndef TEAPOT_MATRIX_USE_DOUBLE_PRECISION
     fvalue = value;
