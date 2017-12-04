@@ -1733,7 +1733,7 @@ static void Teapot_MeshData_HiLevel_Draw_Shadow_Map_Vp_Internal(Teapot_MeshData*
     glBindTexture(GL_TEXTURE_2D,Dynamic_Resolution_Get_Shadow_Texture_ID());
 }
 void Teapot_MeshData_HiLevel_Draw_Shadow_Map_Vp(Teapot_MeshData** pMeshData,int numMeshData,const tpoat* lvpMatrix16, float transparent_threshold)  {
-    static const tpoat dummy[6][4];
+    static tpoat dummy[6][4];
     Teapot_MeshData_HiLevel_Draw_Shadow_Map_Vp_Internal(pMeshData,numMeshData,lvpMatrix16,dummy,transparent_threshold,0);
 }
 void Teapot_MeshData_HiLevel_Draw_Shadow_Map_Vp_With_Frustum_Culling(Teapot_MeshData** pMeshData,int numMeshData,const tpoat* lvpMatrix16,const tpoat lvpMatrixFrustumPlaneEquations[6][4], float transparent_threshold) {
