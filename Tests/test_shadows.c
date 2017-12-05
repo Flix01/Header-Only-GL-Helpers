@@ -477,7 +477,7 @@ void InitGL(void) {
         Teapot_MeshData_SetMMatrix(md,mMatrix);
         Teapot_MeshData_SetScaling(md,0.5f,0.5f,0.5f);
         Teapot_MeshData_SetColor(md,0.3f,0.5f,1.0f,0.5f);
-        Teapot_MeshData_SetMeshId(md,TEAPOT_MESH_CAPSULE);
+        Teapot_MeshData_SetMeshId(md,TEAPOT_MESH_GHOST);
 
         // (character)
         md = pMeshData[i++];
