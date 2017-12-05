@@ -358,7 +358,7 @@ void ResizeGL(int w,int h) {
 // Since we have to draw the objects twice (for shadow mapping), it's better to store them in an array.
 // We're very lucky because teapot.h provides one for us!
 static Teapot_MeshData* allocated_memory = NULL;    // This is allocated in InitGL() and freed in DestroyGL()
-static Teapot_MeshData* pMeshData[30];              // This just points to parts of allocated_memory (to avoid multiple allocations)
+static Teapot_MeshData* pMeshData[35];              // This just points to parts of allocated_memory (to avoid multiple allocations)
 static const int maxNumMeshData = sizeof(pMeshData)/sizeof(pMeshData[0]);
 static int numMeshData = 0; // initial value (see InitGL())
 static Teapot_MeshData* pAnimatedMeshData0 = NULL;
@@ -477,7 +477,7 @@ void InitGL(void) {
         Teapot_MeshData_SetMMatrix(md,mMatrix);
         Teapot_MeshData_SetScaling(md,0.5f,0.5f,0.5f);
         Teapot_MeshData_SetColor(md,0.3f,0.5f,1.0f,0.5f);
-        Teapot_MeshData_SetMeshId(md,TEAPOT_MESH_GHOST);
+        Teapot_MeshData_SetMeshId(md,TEAPOT_MESH_CAPSULE);
 
         // (character)
         md = pMeshData[i++];
@@ -543,6 +543,13 @@ void InitGL(void) {
         Teapot_MeshData_SetMMatrix(md,mMatrix);
         Teapot_MeshData_SetMeshId(md,TEAPOT_MESH_TEAPOT);
 
+        // (capsule)
+        md = pMeshData[i++];
+        Teapot_MeshData_SetScaling(md,0.25f,0.35f,0.25f);
+        Teapot_MeshData_SetColor(md,0.4f,0.8f,0.2f,1.0f);
+        mMatrix[12]=0.75;   mMatrix[13]=0.0;    mMatrix[14]=-1.5;
+        Teapot_MeshData_SetMMatrix(md,mMatrix);
+        Teapot_MeshData_SetMeshId(md,TEAPOT_MESH_CAPSULE);
 
         numMeshData = i;    // Well, we should check that numMeshData<maxNumMeshData
     }
@@ -702,7 +709,7 @@ As a bonus, if you do all the above, you're well on your way to implementing cas
     // There is also a version that takes lpMatrix and lvMatrix and multiplies them
     // and another version that takes lvpMatrix and its frustum planes and performs frustum culling
     // (try it, but it's untested and probably slower in many cases)
-    Teapot_MeshData_HiLevel_Draw_Shadow_Map_Vp(pMeshData,numMeshData,lvpMatrix,0.5f);
+    Teapot_HiLevel_DrawMulti_ShadowMap_Vp(pMeshData,numMeshData,lvpMatrix,0.5f);
     // The HiLevel function above uses parts of dynamic_resolution_h too, but you can unwrap it and use low-level functions as well (see its code).
 
     // Most noticebly, it wraps functions like:
