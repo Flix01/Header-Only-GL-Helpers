@@ -20,7 +20,7 @@ Command-lines to compile them on Linux, Windows and Emscripten are present at th
 # Screenshots
 ![test_shadows](./Screenshots/test_shadows.jpg)
 ![test_shadows_dr](./Screenshots/test_shadows_dr.jpg)
-![test_sdf](./Screenshots/test_sdf.png)
+![test_sdf](./Screenshots/test_sdf.gif)
 
 
 

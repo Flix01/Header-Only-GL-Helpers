@@ -364,20 +364,10 @@ void InitGL(void) {
         if (!gTextChunks[i]) {printf("Error: Sdf::SdfAddTextChunk(gDefaultCharset)=NULL.\n");exit(0);}
         //Sdf::SdfTextChunkSetMute(gTextChunks[i],true);    // start hidden
 
-        // Optional
-        if (i<4) {
-            Sdf::SdfTextChunk* tc = gTextChunks[i];
-            const Sdf::SDFAnimationMode am = i==0 ? Sdf::SDF_AM_LEFT_IN : (i==1 ? Sdf::SDF_AM_TOP_IN : (i==2 ? Sdf::SDF_AM_ZOOM_IN : Sdf::SDF_AM_BOTTOM_IN));
-            Sdf::SdfTextChunkSetAnimationMode(tc,am);
-        }
     }
 
-    // This is just to show that the ebedded 256x256 pixels font includes European glyphs (not all!) that are specific to some languages:
-    Sdf::SdfAddTextWithTags(gTextChunks[0],"<scale=2><color=FF0000FF>English</color></scale>\nThy song, nor ever can those trees be bare;\nBold Lover, never, never canst thou kiss,\nThough winning near the goal yet, do not grieve;\nShe cannot fade, though thou hast not thy bliss,\nFor ever wilt thou love, and she be fair!");
-    Sdf::SdfAddTextWithTags(gTextChunks[1],"<scale=2><color=FF0000FF>Italian</color></scale>\nÈ questo, Brandimarte, è questo il regno\ndi che pigliar lo scettro ora dovevi?\nOr così teco a Dammogire io vegno?\ncosì nel real seggio mi ricevi?\nAh Fortuna crudel, quanto disegno\nmi rompi! oh che speranze oggi mi levi!\nDeh, che cesso io, poi c’ho perduto questo\ntanto mio ben, ch’io non perdo anco il resto?");
-    Sdf::SdfAddTextWithTags(gTextChunks[2],"<scale=2><color=FF0000FF>German</color></scale>\nDie Gassen verließ ich, vom Wächter bewacht,\nDurchwandelte sacht\nIn der Nacht, in der Nacht,\nDas Tor mit dem gotischen Bogen.\nDer Mühlbach rauschte durch felsigen Schacht,\nIch lehnte mich über die Brücke,\nTief unter mir nahm ich der Wogen in acht,\nDie wallten so sacht\nIn der Nacht, in der Nacht,\nDoch wallte nicht eine zurücke.");
-    Sdf::SdfAddTextWithTags(gTextChunks[3],"<scale=2><color=FF0000FF>Finnish</color></scale>\nMut ylhäällä orressa vielä on vain\nse häkki mi sulkee mun sirkuttajain,\nja vaiennut vaikerrus on vankilan;\noi, murheita muistaa ken vois laulajan!\nSä tähdistä kirkkain, nyt loisteesi luo\nsinne Suomeeni kaukaisehen!\nJa sitten kun sammuu sun tuikkeesi tuo,\nsä siunaa se maa muistojen!");
-    // However you can't expect all European glyphs to fit into a 256x256 texture! [a question mark is displayed when a glyph is missing]
+    // We will use gTextChunks[0,1,2,3] to display text in different languages in DrawGL()
+    // This is just to show that the ebedded 512x512 pixels font should include the whole ASCII EXTENDED European glyphs set.
 
     // We will use gTextChunks[4] to display a dynamic counter in DrawGL()
 
@@ -418,6 +408,46 @@ void DrawGL(void)
         // We update our FPS every 20 frames (= it's not instant FPS)
         FPS = (20*1000.f)/(float)(timeNow - fps_time_start);
         fps_time_start = timeNow;
+    }
+
+    // Here we pass the main text and we schedule the text animations
+    static unsigned text_time = 0;
+    static int text_phase = -1;
+    static unsigned text_phase_time=0;
+    if (elapsed_time-text_time>=text_phase_time) {
+        ++text_phase;text_phase%=4;
+        if (text_phase==0 || text_phase==2) {
+            for (int i=0;i<4;i++) {
+                Sdf::SdfTextChunk* tc = gTextChunks[i];
+                Sdf::SdfClearText(tc);
+                const Sdf::SDFAnimationMode am = i==0 ? Sdf::SDF_AM_LEFT_IN : (i==1 ? Sdf::SDF_AM_TOP_IN : (i==2 ? Sdf::SDF_AM_BOTTOM_IN : Sdf::SDF_AM_RIGHT_IN));
+                Sdf::SdfTextChunkSetAnimationMode(tc,am);
+                tc->animationStartTime=(float)(elapsed_time*0.001); // in seconds (this is the time passed to SdfRender() below)
+            }
+            if (text_phase==0)  {
+                Sdf::SdfAddTextWithTags(gTextChunks[0],"<scale=2><color=FF0000FF>English</color></scale>\nThy song, nor ever can those trees be bare;\nBold Lover, never, never canst thou kiss,\nThough winning near the goal yet, do not grieve;\nShe cannot fade, though thou hast not thy bliss,\nFor ever wilt thou love, and she be fair!");
+                Sdf::SdfAddTextWithTags(gTextChunks[1],"<scale=2><color=FF0000FF>Italian</color></scale>\nÈ questo, Brandimarte, è questo il regno\ndi che pigliar lo scettro ora dovevi?\nOr così teco a Dammogire io vegno?\ncosì nel real seggio mi ricevi?\nAh Fortuna crudel, quanto disegno\nmi rompi! oh che speranze oggi mi levi!\nDeh, che cesso io, poi c’ho perduto questo\ntanto mio ben, ch’io non perdo anco il resto?");
+                Sdf::SdfAddTextWithTags(gTextChunks[2],"<scale=2><color=FF0000FF>German</color></scale>\nDie Gassen verließ ich, vom Wächter bewacht,\nDurchwandelte sacht\nIn der Nacht, in der Nacht,\nDas Tor mit dem gotischen Bogen.\nDer Mühlbach rauschte durch felsigen Schacht,\nIch lehnte mich über die Brücke,\nTief unter mir nahm ich der Wogen in acht,\nDie wallten so sacht\nIn der Nacht, in der Nacht,\nDoch wallte nicht eine zurücke.");
+                Sdf::SdfAddTextWithTags(gTextChunks[3],"<scale=2><color=FF0000FF>Finnish</color></scale>\nMut ylhäällä orressa vielä on vain\nse häkki mi sulkee mun sirkuttajain,\nja vaiennut vaikerrus on vankilan;\noi, murheita muistaa ken vois laulajan!\nSä tähdistä kirkkain, nyt loisteesi luo\nsinne Suomeeni kaukaisehen!\nJa sitten kun sammuu sun tuikkeesi tuo,\nsä siunaa se maa muistojen!");
+            }
+            else if (text_phase==2) {
+                Sdf::SdfAddTextWithTags(gTextChunks[0],"<scale=2><color=FF0000FF>Spanish</color></scale>\n-¡Ay, señora de mi alma y de mi vida! ¿Para qué me despertastes? Que el mayor bien que la fortuna me podía hacer por ahora era tenerme cerrados los ojos y los oídos, para no ver ni oír ese desdichado músico.\n-¿Qué es lo que dices, niña? Mira que dicen que el que canta es un mozo de mulas.");
+                Sdf::SdfAddTextWithTags(gTextChunks[1],"<scale=2><color=FF0000FF>Russian</color></scale>\nМне нравится еще, что вы при мне\nСпокойно обнимаете другую,\nНе прочите мне в адовом огне\nГореть за то, что я не вас целую.\nЧто имя нежное мое, мой нежный, не\nУпоминаете ни днем, ни ночью – всуе…\nЧто никогда в церковной тишине\nНе пропоют над нами: аллилуйя!\n");
+                Sdf::SdfAddTextWithTags(gTextChunks[2],"<scale=2><color=FF0000FF>French</color></scale>\nL'homme a, pour payer sa rançon,\nDeux champs au tuf profond et riche,\nQu'il faut qu'il remue et défriche\nAvec le fer de la raison;\nPour obtenir la moindre rose,\nPour extorquer quelques épis,\nDes pleurs salés de son front gris\nSans cesse il faut qu'il les arrose.");
+                Sdf::SdfAddTextWithTags(gTextChunks[3],"<scale=2><color=FF0000FF>Poland</color></scale>\n„Kto tam?” Spadła zapora,\nWychodzi starzec, świeci;\nPani na kształt upiora\nZ krzykiem do chatki leci.\nHa! ha! zsiniałe usta,\nOczy przewraca w słup,\nDrżąca, zbladła jak chusta:\n„Ha! mąż, ha! trup!”");
+            }
+            text_phase_time=20000;  // in ms
+        }
+        if (text_phase==1 || text_phase==3) {
+            for (int i=0;i<4;i++) {
+                Sdf::SdfTextChunk* tc = gTextChunks[i];
+                const Sdf::SDFAnimationMode am = i==0 ? Sdf::SDF_AM_LEFT_OUT : (i==1 ? Sdf::SDF_AM_TOP_OUT : (i==2 ? Sdf::SDF_AM_BOTTOM_OUT : Sdf::SDF_AM_RIGHT_OUT));
+                Sdf::SdfTextChunkSetAnimationMode(tc,am);
+                tc->animationStartTime=(float)(elapsed_time*0.001); // in seconds (this is the time passed to SdfRender() below)
+            }
+            text_phase_time=500;   // in ms (because we know that the default animation time is about 0.5s IIRC... but the animation speed can be changed)
+        }
+        text_time=elapsed_time;
     }
 
     // view Matrix
@@ -462,7 +492,7 @@ void DrawGL(void)
 //  Draw Text=====================================================================
     const float viewport[4] = {0.f,0.f,(float)current_width,(float)current_height};
     //float viewport[4];glGetFloatv(GL_VIEWPORT,viewport);
-    Sdf::SdfRender(viewport,(float)(glutGet(GLUT_ELAPSED_TIME)*0.001));
+    Sdf::SdfRender(viewport,(float)(elapsed_time*0.001));
 //  ==============================================================================
 
 

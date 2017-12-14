@@ -873,6 +873,10 @@ void Teapot_Draw_Mv(const tpoat mvMatrix[16], TeapotMeshEnum meshId)    {
         tpoat mat[16];Teapot_Helper_CopyMatrix(mat,mvMatrix);
         mat[12] = origin[0];    mat[13] = origin[1];    mat[14] = origin[2];
 
+        // Tip: it should be better to cull TEAPOT_MESH_CAPSULE here
+        // and skip its child shapes in the frustum culling code below
+
+        // TEAPOT_MESH_CYLINDER_LATERAL_SURFACE
         Teapot_SetScaling(diameter,height,diameter);
         Teapot_Draw_Mv(mat,TEAPOT_MESH_CYLINDER_LATERAL_SURFACE);
 
@@ -897,7 +901,8 @@ void Teapot_Draw_Mv(const tpoat mvMatrix[16], TeapotMeshEnum meshId)    {
 
 #   ifdef TEAPOT_ENABLE_FRUSTUM_CULLING
     if ((meshId<TEAPOT_MESH_TEXT_X || meshId>TEAPOT_MESH_TEXT_Z) &&
-        meshId!=TEAPOT_MESH_CYLINDER_LATERAL_SURFACE)   // Frustum culling doesn't work on this (to fix)
+        meshId!=TEAPOT_MESH_CYLINDER_LATERAL_SURFACE   // Frustum culling doesn't work on this (to fix)
+        )
         {
         const float scaling[3] = {TIS.scaling[0],TIS.scaling[1],TIS.scaling[2]};
         const float aabbMin[3] = {TIS.aabbMin[meshId][0]*scaling[0],TIS.aabbMin[meshId][1]*scaling[1],TIS.aabbMin[meshId][2]*scaling[2]};
