@@ -416,7 +416,8 @@ void DrawGL(void)
     static unsigned text_phase_time=0;
     if (elapsed_time-text_time>=text_phase_time) {
         ++text_phase;text_phase%=4;
-        if (text_phase==0 || text_phase==2) {
+        if (text_phase%2==0) {
+            // text_phase is an even number. We must replace text and add IN animations.
             for (int i=0;i<4;i++) {
                 Sdf::SdfTextChunk* tc = gTextChunks[i];
                 Sdf::SdfClearText(tc);
@@ -434,18 +435,19 @@ void DrawGL(void)
                 Sdf::SdfAddTextWithTags(gTextChunks[0],"<scale=2><color=FF0000FF>Spanish</color></scale>\n-¡Ay, señora de mi alma y de mi vida! ¿Para qué me despertastes? Que el mayor bien que la fortuna me podía hacer por ahora era tenerme cerrados los ojos y los oídos, para no ver ni oír ese desdichado músico.\n-¿Qué es lo que dices, niña? Mira que dicen que el que canta es un mozo de mulas.");
                 Sdf::SdfAddTextWithTags(gTextChunks[1],"<scale=2><color=FF0000FF>Russian</color></scale>\nМне нравится еще, что вы при мне\nСпокойно обнимаете другую,\nНе прочите мне в адовом огне\nГореть за то, что я не вас целую.\nЧто имя нежное мое, мой нежный, не\nУпоминаете ни днем, ни ночью – всуе…\nЧто никогда в церковной тишине\nНе пропоют над нами: аллилуйя!\n");
                 Sdf::SdfAddTextWithTags(gTextChunks[2],"<scale=2><color=FF0000FF>French</color></scale>\nL'homme a, pour payer sa rançon,\nDeux champs au tuf profond et riche,\nQu'il faut qu'il remue et défriche\nAvec le fer de la raison;\nPour obtenir la moindre rose,\nPour extorquer quelques épis,\nDes pleurs salés de son front gris\nSans cesse il faut qu'il les arrose.");
-                Sdf::SdfAddTextWithTags(gTextChunks[3],"<scale=2><color=FF0000FF>Poland</color></scale>\n„Kto tam?” Spadła zapora,\nWychodzi starzec, świeci;\nPani na kształt upiora\nZ krzykiem do chatki leci.\nHa! ha! zsiniałe usta,\nOczy przewraca w słup,\nDrżąca, zbladła jak chusta:\n„Ha! mąż, ha! trup!”");
+                Sdf::SdfAddTextWithTags(gTextChunks[3],"<scale=2><color=FF0000FF>Polish</color></scale>\n„Kto tam?” Spadła zapora,\nWychodzi starzec, świeci;\nPani na kształt upiora\nZ krzykiem do chatki leci.\nHa! ha! zsiniałe usta,\nOczy przewraca w słup,\nDrżąca, zbladła jak chusta:\n„Ha! mąż, ha! trup!”");
             }
-            text_phase_time=20000;  // in ms
+            text_phase_time=20000;  // in ms (= IN animation length + time we want our text to be visible)
         }
-        if (text_phase==1 || text_phase==3) {
+        else {
+            // text_phase is an odd number. We just need to add OUT animations.
             for (int i=0;i<4;i++) {
                 Sdf::SdfTextChunk* tc = gTextChunks[i];
                 const Sdf::SDFAnimationMode am = i==0 ? Sdf::SDF_AM_LEFT_OUT : (i==1 ? Sdf::SDF_AM_TOP_OUT : (i==2 ? Sdf::SDF_AM_BOTTOM_OUT : Sdf::SDF_AM_RIGHT_OUT));
                 Sdf::SdfTextChunkSetAnimationMode(tc,am);
                 tc->animationStartTime=(float)(elapsed_time*0.001); // in seconds (this is the time passed to SdfRender() below)
             }
-            text_phase_time=500;   // in ms (because we know that the default animation time is about 0.5s IIRC... but the animation speed can be changed)
+            text_phase_time=500;   // in ms (because we know that the default animation time is about 0.5s long IIRC... but the animation speed can be changed)
         }
         text_time=elapsed_time;
     }
