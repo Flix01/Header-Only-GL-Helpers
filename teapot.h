@@ -1,6 +1,3 @@
-#ifndef TEAPOT_H_
-#define TEAPOT_H_
-
 /* LICENSE: Made by @Flix01. MIT license on my part.
  * But I don't know the license of the original Teapot mesh data,
  * and of the Bunny and Torus meshes (these two from the Bullet Physics Engine's GImpact Old Demo)
@@ -45,6 +42,10 @@
 //#define TEAPOT_USE_OPENMP                 // (experimental) ATM is only used in Teapot_MeshData_CalculateMvMatrixFromArray(...) and never tested => one more dependency and no gain: DO NOT USE!
 //
 //#define TEAPOT_MESHDATA_HAS_MMATRIX_PTR   // (untested) handy when using Teapot_MeshData + some kind of physic engine that already stores a mMatrix16 somewhere.
+
+#ifndef TEAPOT_H_
+#define TEAPOT_H_
+
 
 #ifdef __cplusplus
 extern "C" {

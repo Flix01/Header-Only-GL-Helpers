@@ -1,3 +1,4 @@
+
 /** MIT License
  *
  * Copyright (c) 2017 Flix (https://github.com/Flix01/)
@@ -20,6 +21,42 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
 */
+
+/* WHAT'S THIS?
+ * A plain C (--std=gnu89) header-only file that can send your rendering to a FBO (frame buffer object) texture,
+ * and in a second pass can send that texture to screen. The major benefit of doing so is that when the frame rate is low,
+ * this file can reduce the FBO texture area and then stretch it in the second pass, improving the frame rate.
+ * This effect can also be switched off completely, so that there's no FBO overhead (but this switch is not automatic).
+ *
+ * As an extra feature, this file can be optionally used to draw geometry to a shadow map depth texture (owned by this file),
+ * so that dynamic resolution works for the shadow map too (basically only a portion of the depth texture can be
+ * used as shadow map at runtime). This is the first pass of the shadow mapping technique. In the second pass,
+ * user must bind to this shadow texture, and add an additional uniform to the "second shadow map pass shader" with the
+ * "dynamic resolution factor" (the change should be rather easy).
+*/
+
+/* USAGE:
+ * Please see the comments of the functions below and try to follow their order when you call them.
+ * Define DYNAMIC_RESOLUTION_IMPLEMENTATION in one of your .c (or .cpp) files before the inclusion of this file.
+*/
+
+// WARNING FOR HI-RES SCREEN SIZE:
+// The implementation assumes that the screen (or window) width and height are supported for texture creation (otherwise the FBO texture cannot be created).
+// That's because if we want to keep screen quality when "dynamic resolution" is 1.0f, we need a full size texture.
+
+// OPTIONAL DEFINITIONS:
+//
+//#define DYNAMIC_RESOLUTION_USE_GLSL_VERSION_330                   // (Optional) Not sure it's faster...
+//
+//#define DYNAMIC_RESOLUTION_USE_NEAREST_TEXTURE_FILTER             // (undefined is GL_LINEAR) Used only when dynamic resolution kicks in
+//
+//#define DYNAMIC_RESOLUTION_SHADOW_MAP_SIZE_MULTIPLIER             // (default is 1.5)
+//#define DYNAMIC_RESOLUTION_SHADOW_MAP_MAX_SIZE                    // (default 2048) shadow_texture.size = DYNAMIC_RESOLUTION_SHADOW_MAP_SIZE_MULTIPLIER * max(screen.width,screen.height)
+//#define DYNAMIC_RESOLUTION_SHADOW_USE_NEAREST_TEXTURE_FILTER      // (undefined is GL_LINEAR)
+//
+//
+//#define DYNAMIC_RESOLUTION_NUM_RENDER_TARGETS                     // (default is 1) Basically it pingpongs render targets, greatly increasing memory consumption. Not sure if it's faster or not and if it's artifact-free.
+
 
 #ifndef DYNAMIC_RESOLUTION_H
 #define DYNAMIC_RESOLUTION_H
@@ -68,6 +105,7 @@ void Dynamic_Resolution_Init(float desiredFPS, int enabled);
 void Dynamic_Resolution_Resize(int width,int height);
 
 // In DrawGL() or similar:--------------------------------------
+
 // Optional: draw shadow map
 void Dynamic_Resolution_Bind_Shadow();
 // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);  // Here (not above)
@@ -77,7 +115,6 @@ void Dynamic_Resolution_Shadow_Set_Scaling(float scalingX,float scalingY,float s
 // draw objects here (disable all glDisableVertexAttrib(...) except zero)
 void Dynamic_Resolution_Unbind_Shadow();
 GLint Dynamic_Resolution_Get_Shadow_Texture_ID();
-
 // End Optional Draw ShadowMap
 
 void Dynamic_Resolution_Bind();
@@ -340,12 +377,17 @@ static void RenderTarget_Init(RenderTarget* rt,int width, int height) {
         rt->width = width;
         rt->height = height;
 
+        GLenum filter = GL_LINEAR;
+#       ifdef  DYNAMIC_RESOLUTION_USE_NEAREST_TEXTURE_FILTER
+        filter = GL_NEAREST;
+#       endif //DYNAMIC_RESOLUTION_USE_NEAREST_TEXTURE_FILTER
+
         for (i=0;i<DYNAMIC_RESOLUTION_NUM_RENDER_TARGETS;i++)	{
             rt->resolution_factor[i] = 1;
 
             glBindTexture(GL_TEXTURE_2D, rt->texture[i]);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
@@ -395,12 +437,17 @@ static void RenderTarget_Init(RenderTarget* rt,int width, int height) {
         if (rt->shadow_width>DYNAMIC_RESOLUTION_SHADOW_MAP_MAX_SIZE) rt->shadow_width = DYNAMIC_RESOLUTION_SHADOW_MAP_MAX_SIZE;
         if (rt->shadow_height>DYNAMIC_RESOLUTION_SHADOW_MAP_MAX_SIZE) rt->shadow_height = DYNAMIC_RESOLUTION_SHADOW_MAP_MAX_SIZE;
 
+        GLenum shadow_filter = GL_LINEAR;
+#       ifdef  DYNAMIC_RESOLUTION_SHADOW_USE_NEAREST_TEXTURE_FILTER
+        shadow_filter = GL_NEAREST;
+#       endif //DYNAMIC_RESOLUTION_SHADOW_USE_NEAREST_TEXTURE_FILTER
+
         for (i=0;i<DYNAMIC_RESOLUTION_NUM_RENDER_TARGETS;i++)	{
             rt->shadow_resolution_factor[i] = 1;
 
             glBindTexture(GL_TEXTURE_2D, rt->shadow_texture[i]);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, shadow_filter);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, shadow_filter);
 
             /*
 #           ifdef DYNAMIC_RESOLUTION_VISUALIZE_DEPTH_TEXTURE
