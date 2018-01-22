@@ -461,13 +461,19 @@ static void RenderTarget_Init(RenderTarget* rt,int width, int height) {
 
 #           ifdef __EMSCRIPTEN__
             glTexImage2D( GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, rt->shadow_width, rt->shadow_height, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_SHORT, 0);
-            glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE );
-            glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE );
-#           else //__EMSCRIPTEN__
-            glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP );
-            glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP );
+            const GLenum clampMode = GL_CLAMP_TO_EDGE;  // Unluckily WebGL does not support GL_CLAMP or GL_CLAMP_TO_BORDER
+#           else //__EMSCRIPTEN__*/
             glTexImage2D( GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, rt->shadow_width, rt->shadow_height, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, 0);
-#           endif //__EMSCRIPTEN__
+            const GLenum clampMode = //GL_CLAMP;    // sampling outside of the shadow map gives always shadowed pixels
+                   // GL_CLAMP_TO_EDGE;             // sampling outside of the shadow map can give shadowed or unshadowed pixels (it depends on the edge of the shadow map)
+                    GL_CLAMP_TO_BORDER;             // sampling outside of the shadow map gives always non-shadowed pixels (if we set the border color correctly)
+            if (clampMode==GL_CLAMP_TO_BORDER)  {
+               const GLfloat border[] = {1.0f,1.0f,1.0f,0.0f };
+               glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, border);
+            }
+#           endif // //__EMSCRIPTEN__*/
+            glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, clampMode );
+            glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, clampMode );
 
             glBindFramebuffer(GL_FRAMEBUFFER, rt->shadow_frame_buffer[i]);
 #           ifndef __EMSCRIPTEN__
