@@ -1,3 +1,5 @@
+// https://github.com/Flix01/Header-Only-GL-Helpers
+//
 /** MIT License
  *
  * Copyright (c) 2017 Flix (https://github.com/Flix01/)

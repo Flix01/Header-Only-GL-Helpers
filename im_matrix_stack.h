@@ -1,3 +1,5 @@
+// https://github.com/Flix01/Header-Only-GL-Helpers
+//
 /** MIT License
  *
  * Copyright (c) 2017 Flix (https://github.com/Flix01/)
@@ -306,7 +308,7 @@ static __inline imoat IMPlanePointDistance(const imoat* __restrict plane4,const 
     return rv;
 }
 
-static __inline imoat IMDVector3Dot(const imoat v0[3],const imoat v1[3]) {
+static __inline imoat IMVector3Dot(const imoat v0[3],const imoat v1[3]) {
     return v0[0]*v1[0]+v0[1]*v1[1]+v0[2]*v1[2];
 }
 static __inline void IMVector3Normalize(imoat v[3]) {

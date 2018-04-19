@@ -1,3 +1,5 @@
+// https://github.com/Flix01/Header-Only-GL-Helpers
+//
 /** License
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -198,7 +200,7 @@ tpoat lightDirection[3] = {1.5,2,2};// Will be normalized
 
 // pMatrix data:
 tpoat pMatrix[16];                  // projection matrix
-const tpoat pMatrixFovDeg = 45.f;
+const tpoat pMatrixFovyDeg = 45.f;
 const tpoat pMatrixNearPlane = 0.5f;
 const tpoat pMatrixFarPlane = 20.0f;
 
@@ -214,7 +216,7 @@ void ResizeGL(int w,int h) {
         // We set our pMatrix here in ResizeGL(), and we must notify teapot.h about it too.
         imMatrixMode(GL_PROJECTION);
         imLoadIdentity();
-        imuPerspective(pMatrixFovDeg,(tpoat)w/(tpoat)h,pMatrixNearPlane,pMatrixFarPlane);
+        imuPerspective(pMatrixFovyDeg,(tpoat)w/(tpoat)h,pMatrixNearPlane,pMatrixFarPlane);
         imGetImoatv(GL_PROJECTION,pMatrix); // We can retrieve it if we need to store pMatrix.
         Teapot_SetProjectionMatrix(pMatrix);
         imMatrixMode(GL_MODELVIEW);

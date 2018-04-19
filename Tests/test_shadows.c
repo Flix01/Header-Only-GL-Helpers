@@ -1,3 +1,5 @@
+// https://github.com/Flix01/Header-Only-GL-Helpers
+//
 /** License
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -81,9 +83,14 @@ for glut.h, glew.h, etc. with something like:
 #include <math.h>
 #include <string.h>
 
+
 // "dynamic_resolution.h" implements the first shadow mapping step and optionally dynamic resolution (that by default should keep frame rate > config.dynamic_resolution_target_fps)
-//#define DYNAMIC_RESOLUTION_USE_GLSL_VERSION_330   // (Optional) Not sure it's faster...
-#define DYNAMIC_RESOLUTION_IMPLEMENTATION           // Mandatory in 1 source file (.c or .cpp)
+//#define DYNAMIC_RESOLUTION_USE_GLSL_VERSION_330       // (Optional) Not sure it's faster...
+//#define DYNAMIC_RESOLUTION_SHADOW_MAP_SIZE_FORCE_POT    // There are other definitions that affect the shadow map resolution. Please see dynamic_resolution.h.
+#ifndef __EMSCRIPTEN__
+//#   define DYNAMIC_RESOLUTION_SHADOW_USE_PCF 4  // Optional [but expensive] Percentage Closing Filter Shadows (emscripten would need -s USE_WEBGL2=1 plus a full rewrite of the shader in teapot.h in modern WebGL... but I prefer backward compatibility with WebGL 1.0)
+#endif //__EMSCRIPTEN__
+#define DYNAMIC_RESOLUTION_IMPLEMENTATION               // Mandatory in 1 source file (.c or .cpp)
 #include "dynamic_resolution.h"
 
 
@@ -207,129 +214,12 @@ float lightDirection[3] = {1,2,1.5};// Will be normalized
 
 // pMatrix data:
 float pMatrix[16];                  // projection matrix
-const float pMatrixFovDeg = 45.f;
+const float pMatrixFovyDeg = 45.f;
 const float pMatrixNearPlane = 0.5f;
 const float pMatrixFarPlane = 20.0f;
+float pMatrixInv[16];               // inverse projection matrix (test)
 
 float instantFrameTime = 16.2f;
-
-// custom replacement of gluPerspective(...)
-static void Perspective(float res[16],float degfovy,float aspect, float zNear, float zFar) {
-    const float eps = 0.0001f;
-    float f = 1.f/tan(degfovy*1.5707963268f/180.0); //cotg
-    float Dfn = (zFar-zNear);
-    if (Dfn==0) {zFar+=eps;zNear-=eps;Dfn=zFar-zNear;}
-    if (aspect==0) aspect = 1.f;
-
-    res[0]  = f/aspect;
-    res[1]  = 0;
-    res[2]  = 0;
-    res[3]  = 0;
-
-    res[4]  = 0;
-    res[5]  = f;
-    res[6]  = 0;
-    res[7] = 0;
-
-    res[8]  = 0;
-    res[9]  = 0;
-    res[10] = -(zFar+zNear)/Dfn;
-    res[11] = -1;
-
-    res[12]  = 0;
-    res[13]  = 0;
-    res[14] = -2.f*zFar*zNear/Dfn;
-    res[15] = 0;
-}
-// custom replacement of glOrtho(...)
-static void Ortho(float res[16],float left,float right, float bottom, float top,float nearVal,float farVal) {
-    const float eps = 0.0001f;
-    float Drl = (right-left);
-    float Dtb = (top-bottom);
-    float Dfn = (farVal-nearVal);
-    if (Drl==0) {right+=eps;left-=eps;Drl=right-left;}
-    if (Dtb==0) {top+=eps;bottom-=eps;Dtb=top-bottom;}
-    if (Dfn==0) {farVal+=eps;nearVal-=eps;Dfn=farVal-nearVal;}
-
-    res[0]  = 2.f/Drl;
-    res[1]  = 0;
-    res[2]  = 0;
-    res[3] = 0;
-
-    res[4]  = 0;
-    res[5]  = 2.f/Dtb;
-    res[6]  = 0;
-    res[7] = 0;
-
-    res[8]  = 0;
-    res[9]  = 0;
-    res[10] = -2.f/Dfn;
-    res[11] = 0;
-
-    res[12]  = -(right+left)/Drl;
-    res[13]  = -(top+bottom)/Dtb;
-    res[14] = (farVal+nearVal)/Dfn;
-    res[15] = 1;
-}
-
-// custom replacement of gluLookAt(...)
-static void LookAt(float m[16],float eyeX,float eyeY,float eyeZ,float centerX,float centerY,float centerZ,float upX,float upY,float upZ)    {
-    const float eps = 0.0001f;
-
-    float F[3] = {eyeX-centerX,eyeY-centerY,eyeZ-centerZ};
-    float length = F[0]*F[0]+F[1]*F[1]+F[2]*F[2];	// length2 now
-    float up[3] = {upX,upY,upZ};
-
-    float S[3] = {up[1]*F[2]-up[2]*F[1],up[2]*F[0]-up[0]*F[2],up[0]*F[1]-up[1]*F[0]};
-    float U[3] = {F[1]*S[2]-F[2]*S[1],F[2]*S[0]-F[0]*S[2],F[0]*S[1]-F[1]*S[0]};
-
-    if (length==0) length = eps;
-    length = sqrt(length);
-    F[0]/=length;F[1]/=length;F[2]/=length;
-
-    length = S[0]*S[0]+S[1]*S[1]+S[2]*S[2];if (length==0) length = eps;
-    length = sqrt(length);
-    S[0]/=length;S[1]/=length;S[2]/=length;
-
-    length = U[0]*U[0]+U[1]*U[1]+U[2]*U[2];if (length==0) length = eps;
-    length = sqrt(length);
-    U[0]/=length;U[1]/=length;U[2]/=length;
-
-    m[0] = S[0];
-    m[1] = U[0];
-    m[2] = F[0];
-    m[3]= 0;
-
-    m[4] = S[1];
-    m[5] = U[1];
-    m[6] = F[1];
-    m[7]= 0;
-
-    m[8] = S[2];
-    m[9] = U[2];
-    m[10]= F[2];
-    m[11]= 0;
-
-    m[12] = -S[0]*eyeX -S[1]*eyeY -S[2]*eyeZ;
-    m[13] = -U[0]*eyeX -U[1]*eyeY -U[2]*eyeZ;
-    m[14]= -F[0]*eyeX -F[1]*eyeY -F[2]*eyeZ;
-    m[15]= 1;
-}
-static __inline float Vec3Dot(const float v0[3],const float v1[3]) {
-    return v0[0]*v1[0]+v0[1]*v1[1]+v0[2]*v1[2];
-}
-static __inline void Vec3Normalize(float v[3]) {
-    float len = Vec3Dot(v,v);int i;
-    if (len!=0) {
-        len = sqrt(len);
-        for (i=0;i<3;i++) v[i]/=len;
-    }
-}
-static __inline void Vec3Cross(float rv[3],const float a[3],const float b[3]) {
-    rv[0] =	a[1] * b[2] - a[2] * b[1];
-    rv[1] =	a[2] * b[0] - a[0] * b[2];
-    rv[2] =	a[0] * b[1] - a[1] * b[0];
-}
 
 
 float current_width=0,current_height=0,current_aspect_ratio=1;  // Not sure when I've used these...
@@ -339,8 +229,9 @@ void ResizeGL(int w,int h) {
     if (current_height!=0) current_aspect_ratio = current_width/current_height;
     if (h>0)	{
         // We set our pMatrix here in ResizeGL(), and we must notify teapot.h about it too.
-        Perspective(pMatrix,pMatrixFovDeg,(float)w/(float)h,pMatrixNearPlane,pMatrixFarPlane);
+        Teapot_Helper_Perspective(pMatrix,pMatrixFovyDeg,(float)w/(float)h,pMatrixNearPlane,pMatrixFarPlane);
         Teapot_SetProjectionMatrix(pMatrix);
+        Teapot_Helper_InvertMatrix(pMatrixInv,pMatrix); //Test (we can't use Teapot_Helper_InvertMatrixFast(...) here)
     }
 
     if (h>0) Dynamic_Resolution_Resize(w,h);    // The dynamic resolution texture (and the shadow map) change their size with this call
@@ -587,7 +478,7 @@ void DrawGL(void)
     cur_time = elapsed_time;
 
     // view Matrix
-    LookAt(vMatrix,cameraPos[0],cameraPos[1],cameraPos[2],targetPos[0],targetPos[1],targetPos[2],0,1,0);
+    Teapot_Helper_LookAt(vMatrix,cameraPos[0],cameraPos[1],cameraPos[2],targetPos[0],targetPos[1],targetPos[2],0,1,0);
     Teapot_SetViewMatrixAndLightDirection(vMatrix,lightDirection);  // we must notify teapot.h, and we also pass the lightDirection here
 
     // Animate some objects (
@@ -607,91 +498,22 @@ void DrawGL(void)
 #   ifdef TEAPOT_SHADER_USE_SHADOW_MAP
     // Draw to Shadow Map------------------------------------------------------------------------------------------
     {
-    // Note: we could just skip this if TEAPOT_SHADER_USE_SHADOW_MAP is not defined,
-    // but this part can still be done because it's part of "dynamic_resolution.h",
-    // and the shadow map texture can still be created and displayed.
+    static float lvpMatrix[16]; // = light_pMatrix*light_vMatrix
+    const float texelIncrement = Dynamic_Resolution_GetShadowMapTexelIncrement();   // intended to alleviate shadow swimming (but it does not seem to work...)
 
+//#   define TEST_AUTOMATIC_LVPMATRIX_CALCULATION
+#   ifndef TEST_AUTOMATIC_LVPMATRIX_CALCULATION
     // We're currently calculating all these matrices every frame. This is obviously wrong.
     // Also: there's no fixed rule I know to calculate these matrices. Feel free to change them!
     static float lpMatrix[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
     static float lvMatrix[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-    static float lvpMatrix[16]; // = light_pMatrix*light_vMatrix
     //if (lpMatrix[0]==0)
     {
         // This changes with pMatrixFarPlane and pMatrixFovDeg
-        const float y = pMatrixFarPlane*tan(pMatrixFovDeg*3.1415/180.0)*0.5f;  // last coefficient is ad-hoc for this demo (in our case it should be 1.0, or maybe 0.5 for free roaming; something like 0.2 for fixed environment and MUCH better shadow quality!)
-        const float x = y;
-        Ortho(lpMatrix,-x,x,-y,y,pMatrixFarPlane*0.5f,-pMatrixFarPlane*0.5f);
-/* POSSIBLE IMPROVEMENTS (https://msdn.microsoft.com/en-us/library/windows/desktop/ee416324(v=vs.85).aspx):
- To calculate the projection, the eight points that make up the view
- frustum are transformed into light space. Next, the minimum and maximum
- values in X and Z are found. These values make up the bounds for an
- orthographic projection [-x,x,-y,y].
-
- For directional lights, the solution to the moving shadow edges problem is to round the minimum/maximum value in X and Y (that make up the orthographic projection bounds) to pixel size increments. This can be done with a divide operation, a floor operation, and a multiply.
-    vLightCameraOrthographicMin /= vWorldUnitsPerTexel;
-    vLightCameraOrthographicMin = XMVectorFloor( vLightCameraOrthographicMin );
-    vLightCameraOrthographicMin *= vWorldUnitsPerTexel;
-    vLightCameraOrthographicMax /= vWorldUnitsPerTexel;
-    vLightCameraOrthographicMax = XMVectorFloor( vLightCameraOrthographicMax );
-    vLightCameraOrthographicMax *= vWorldUnitsPerTexel;
-
- The vWorldUnitsPerTexel value is calculated by taking a bound of
- the view frustum, and dividing by the buffer size.
-
-        FLOAT fWorldUnitsPerTexel = fCascadeBound /
-        (float)m_CopyOfCascadeConfig.m_iBufferSize;
-        vWorldUnitsPerTexel = XMVectorSet( fWorldUnitsPerTexel, fWorldUnitsPerTexel, 						   	0.0f, 0.0f );
-
-Bounding the maximum size of the view frustum results in a looser fit for the orthographic projection.
-It is important to note that the texture is 1 pixel larger in width and height when using this technique. This keeps shadow coordinates from indexing outside of the shadow map.
-
-*/
-/*
-Building the matrix:
-
-How I'd go about the very simple case you have:
-You have an orthographic projection for your light-camera. So your frustum is just an Oriented Bounding Box (OBB). That means you can simply feed its world space coordinates (like the width and height) to glm::ortho().
-
-But how do you construct the OBB around the frustum?
-Good question. ;D
-
-Here's a simple approach:
-First determine the direction of your light (as a normalized vector). Now simply project every vertex of your main-camera's frustum onto that vector and find the nearest and furthest one (simply store the distances along the vector). Now subtract the two distances.
-Congratulations! You already have your OBB's depth (Z).
-Now repeat that process for the other two vectors. One pointing upwards or downwards (Y) and the other to the right or left (X) relative to your light-camera. Now you have your OBB's orientation (the three vectors) and dimensions. Now simply pass the OBB's dimensions to glm::ortho() and then transform the orthographic matrix so it has the same orientation as your OBB.
-You're done. :D
-
-Projecting a point onto a vector:
-This step is actually very easy. Just take the dot product between your vector and your point (both stored as vec3).
-Example code:
-
-float distance_on_vector = dot(p, vector);
-
-Vector should be normalized, because you need the world-space distance. You don't need the actual position of p in world space (you just need the projected length) to calculate the dimensions of the OBB. That's why the above code is enough.
-*/
-// https://gamedev.stackexchange.com/questions/73851/how-do-i-fit-the-camera-frustum-inside-directional-light-space
-/*
-    Calculate the 8 corners of the view frustum in world space. This can be done by using the inverse view-projection matrix to transform the 8 corners of the NDC cube (which in OpenGL is [‒1, 1] along each axis).
-
-    Transform the frustum corners to a space aligned with the shadow map axes. This would commonly be the directional light object's local space. (In fact, steps 1 and 2 can be done in one step by combining the inverse view-projection matrix of the camera with the inverse world matrix of the light.)
-
-    Calculate the bounding box of the transformed frustum corners. This will be the view frustum for the shadow map.
-
-    Pass the bounding box's extents to glOrtho or similar to set up the orthographic projection matrix for the shadow map.
-
-There are a couple caveats with this basic approach. First, the Z bounds for the shadow map will be tightly fit around the view frustum, which means that objects outside the view frustum, but between the view frustum and the light, may fall outside the shadow frustum. This could lead to missing shadows. To fix this, depth clamping can be enabled so that objects in front of the shadow frustum will be rendered with clamped Z instead of clipped. Alternatively, the Z-near of the shadow frustum can be pushed out to ensure any possible shadowers are included.
-
-The bigger issue is that this produces a shadow frustum that continuously changes size and position as the camera moves around. This leads to shadows "swimming", which is a very distracting artifact. In order to fix this, it's common to do the following additional two steps:
-
-    Fix the overall size of the frustum based on the longest diagonal of the camera frustum. This ensures that the camera frustum can fit into the shadow frustum in any orientation. Don't allow the shadow frustum to change size as the camera rotates.
-
-    Discretize the position of the frustum, based on the size of texels in the shadow map. In other words, if the shadow map is 1024×1024, then you only allow the frustum to move around in discrete steps of 1/1024th of the frustum size. (You also need to increase the size of the frustum by a factor of 1024/1023, to give room for the shadow frustum and view frustum to slip against each other.)
-
-If you do these, the shadow will remain rock solid in world space as the camera moves around. (It won't remain solid if the camera's FOV, near or far planes are changed, though.)
-
-As a bonus, if you do all the above, you're well on your way to implementing cascaded shadow maps, which are "just" a set of shadow maps calculated from the view frustum as above, but using different view frustum near and far plane values to place each shadow map.
-*/
+        float y = pMatrixFarPlane*tan(pMatrixFovyDeg*3.1415/180.0)*0.3f;  // last coefficient is ad-hoc for this demo (in our case it should be 1.0, or maybe 0.5 for free roaming; something like 0.2 for fixed environment and MUCH better shadow quality!)
+        float x = y;
+        y = ceil(y/texelIncrement)*texelIncrement;x=y;  // intended to alleviate shadow swimming... (?)
+        Teapot_Helper_Ortho(lpMatrix,-x,x,-y,y,pMatrixFarPlane*0.5f,-pMatrixFarPlane*0.5f);
     }
     //if (lmvMatrix[15]==0)
     {
@@ -701,10 +523,16 @@ As a bonus, if you do all the above, you're well on your way to implementing cas
         const float lpos[3] = {shadowTargetPos[0]-lightDirection[0]*distance,
                                shadowTargetPos[1]-lightDirection[1]*distance,
                                shadowTargetPos[2]-lightDirection[2]*distance};
-        LookAt(lvMatrix,lpos[0],lpos[1],lpos[2],shadowTargetPos[0],shadowTargetPos[1],shadowTargetPos[2],0,1,0);
+        Teapot_Helper_LookAt(lvMatrix,lpos[0],lpos[1],lpos[2],shadowTargetPos[0],shadowTargetPos[1],shadowTargetPos[2],0,1,0);
 
         Teapot_Helper_MultMatrix(lvpMatrix,lpMatrix,lvMatrix);
     }
+#   else //TEST_AUTOMATIC_LVPMATRIX_CALCULATION
+    {
+        // This eats too much shadow map resolution... see also: https://github.com/Flix01/Tiny-OpenGL-Shadow-Mapping-Examples
+        Teapot_Helper_GetLightViewProjectionMatrix(lvpMatrix,Teapot_GetViewMatrixInverseConstReference(),pMatrixNearPlane,pMatrixFarPlane,pMatrixFovyDeg,current_aspect_ratio,Teapot_GetNormalizedLightDirectionConstReference(),texelIncrement);
+    }
+#   endif //TEST_AUTOMATIC_LVPMATRIX_CALCULATION
 
     // There is also a version that takes lpMatrix and lvMatrix and multiplies them
     // and another version that takes lvpMatrix and its frustum planes and performs frustum culling
@@ -712,7 +540,7 @@ As a bonus, if you do all the above, you're well on your way to implementing cas
     Teapot_HiLevel_DrawMulti_ShadowMap_Vp(pMeshData,numMeshData,lvpMatrix,0.5f);
     // The HiLevel function above uses parts of dynamic_resolution_h too, but you can unwrap it and use low-level functions as well (see its code).
 
-    // Most noticebly, it wraps functions like:
+    // Most noticeably, it wraps functions like:
 
     // Dynamic_Resolution_Bind_Shadow();   // Binds the shadow map FBO and its shader program
     // Teapot_LowLevel_BindVertexBufferObject();
@@ -763,7 +591,7 @@ As a bonus, if you do all the above, you're well on your way to implementing cas
     }
 
     // Here we draw all our pMeshData
-    Teapot_DrawMulti_Mv(pMeshData,numMeshData,1);    // Here we don't use Teapot_DrawMulti(...) cause we got the MvMatrices already (see Teapot_MeshData_CalculateMvMatrixFromArray(pMeshData,numMeshData); above)
+    Teapot_DrawMulti_Mv(pMeshData,numMeshData,1);    // Here we don't use Teapot_DrawMulti(...) because we got the mvMatrices already (see Teapot_MeshData_CalculateMvMatrixFromArray(pMeshData,numMeshData); above)
                                                      // This way we could have used mvMatrices in the shadow map creation (we haven't done it AFAIR)
                                                      // Please note that to handle transparent objects correctly, it can change the object order (see last argument). So to detect an object, just store pointers and don't realloc the initial buffer (see that we have maxNumMeshData>=numMeshData)
 
@@ -808,6 +636,10 @@ As a bonus, if you do all the above, you're well on your way to implementing cas
 
         glEnable(GL_BLEND);
         glBindTexture(GL_TEXTURE_2D,Dynamic_Resolution_Get_Shadow_Texture_ID());
+#       if TEAPOT_SHADER_SHADOW_MAP_PCF>1
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
+        //glTexParameteri( GL_TEXTURE_2D, GL_DEPTH_TEXTURE_MODE, GL_LUMINANCE);
+#       endif
         glColor4f(1,1,1,0.9f);
         glBegin(GL_QUADS);
         glTexCoord2f(0,0);glVertex2f(-1,    -1);
@@ -815,6 +647,10 @@ As a bonus, if you do all the above, you're well on your way to implementing cas
         glTexCoord2f(1,1);glVertex2f(-0.25*current_aspect_ratio, -0.25/current_aspect_ratio);
         glTexCoord2f(0,1);glVertex2f(-1,    -0.25/current_aspect_ratio);
         glEnd();
+#       if TEAPOT_SHADER_SHADOW_MAP_PCF>1
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_R_TO_TEXTURE);
+        //glTexParameteri( GL_TEXTURE_2D, GL_DEPTH_TEXTURE_MODE, GL_INTENSITY );
+#       endif
         glBindTexture(GL_TEXTURE_2D,0);
         glDisable(GL_BLEND);
 
@@ -947,8 +783,8 @@ void GlutSpecialKeys(int key,int x,int y)
             float up[3] = {0,1,0};
             float left[3];
 
-            Vec3Normalize(forward);
-            Vec3Cross(left,up,forward);
+            Teapot_Helper_Vector3Normalize(forward);
+            Teapot_Helper_Vector3Cross(left,up,forward);
             {
                 float delta[3] = {0,0,0};int i;
                 if (key==GLUT_KEY_LEFT || key==GLUT_KEY_RIGHT) {

@@ -1,3 +1,5 @@
+// https://github.com/Flix01/Header-Only-GL-Helpers
+//
 /** License
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -190,83 +192,12 @@ tpoat lightDirection[3] = {1.5,2,2};// Will be normalized
 
 // pMatrix data:
 tpoat pMatrix[16];                  // projection matrix
-const tpoat pMatrixFovDeg = 45.f;
+const tpoat pMatrixFovyDeg = 45.f;
 const tpoat pMatrixNearPlane = 0.5f;
 const tpoat pMatrixFarPlane = 20.0f;
 
 float instantFrameTime = 16.2f;
 
-// custom replacement of gluPerspective(...)
-static void Perspective(tpoat res[16],tpoat degfovy,tpoat aspect, tpoat zNear, tpoat zFar) {
-    const float eps = 0.0001f;
-    float f = 1.f/tan(degfovy*1.5707963268f/180.0); //cotg
-    float Dfn = (zFar-zNear);
-    if (Dfn==0) {zFar+=eps;zNear-=eps;Dfn=zFar-zNear;}
-    if (aspect==0) aspect = 1.f;
-
-    res[0]  = f/aspect;
-    res[1]  = 0;
-    res[2]  = 0;
-    res[3]  = 0;
-
-    res[4]  = 0;
-    res[5]  = f;
-    res[6]  = 0;
-    res[7] = 0;
-
-    res[8]  = 0;
-    res[9]  = 0;
-    res[10] = -(zFar+zNear)/Dfn;
-    res[11] = -1;
-
-    res[12]  = 0;
-    res[13]  = 0;
-    res[14] = -2.f*zFar*zNear/Dfn;
-    res[15] = 0;
-}
-// custom replacement of gluLookAt(...)
-static void LookAt(tpoat m[16],tpoat eyeX,tpoat eyeY,tpoat eyeZ,tpoat centerX,tpoat centerY,tpoat centerZ,tpoat upX,tpoat upY,tpoat upZ)    {
-    const float eps = 0.0001f;
-
-    float F[3] = {eyeX-centerX,eyeY-centerY,eyeZ-centerZ};
-    float length = F[0]*F[0]+F[1]*F[1]+F[2]*F[2];	// length2 now
-    float up[3] = {upX,upY,upZ};
-
-    float S[3] = {up[1]*F[2]-up[2]*F[1],up[2]*F[0]-up[0]*F[2],up[0]*F[1]-up[1]*F[0]};
-    float U[3] = {F[1]*S[2]-F[2]*S[1],F[2]*S[0]-F[0]*S[2],F[0]*S[1]-F[1]*S[0]};
-
-    if (length==0) length = eps;
-    length = sqrt(length);
-    F[0]/=length;F[1]/=length;F[2]/=length;
-
-    length = S[0]*S[0]+S[1]*S[1]+S[2]*S[2];if (length==0) length = eps;
-    length = sqrt(length);
-    S[0]/=length;S[1]/=length;S[2]/=length;
-
-    length = U[0]*U[0]+U[1]*U[1]+U[2]*U[2];if (length==0) length = eps;
-    length = sqrt(length);
-    U[0]/=length;U[1]/=length;U[2]/=length;
-
-    m[0] = S[0];
-    m[1] = U[0];
-    m[2] = F[0];
-    m[3]= 0;
-
-    m[4] = S[1];
-    m[5] = U[1];
-    m[6] = F[1];
-    m[7]= 0;
-
-    m[8] = S[2];
-    m[9] = U[2];
-    m[10]= F[2];
-    m[11]= 0;
-
-    m[12] = -S[0]*eyeX -S[1]*eyeY -S[2]*eyeZ;
-    m[13] = -U[0]*eyeX -U[1]*eyeY -U[2]*eyeZ;
-    m[14]= -F[0]*eyeX -F[1]*eyeY -F[2]*eyeZ;
-    m[15]= 1;
-}
 static __inline float Vec3Dot(const tpoat v0[3],const tpoat v1[3]) {
     return v0[0]*v1[0]+v0[1]*v1[1]+v0[2]*v1[2];
 }
@@ -290,7 +221,7 @@ void ResizeGL(int w,int h) {
     current_height = h;
     if (h>0)	{
         // We set our pMatrix here in ResizeGL(), and we must notify teapot.h about it too.
-        Perspective(pMatrix,pMatrixFovDeg,(tpoat)w/(tpoat)h,pMatrixNearPlane,pMatrixFarPlane);
+        Teapot_Helper_Perspective(pMatrix,pMatrixFovyDeg,(tpoat)w/(tpoat)h,pMatrixNearPlane,pMatrixFarPlane);
         Teapot_SetProjectionMatrix(pMatrix);
     }
 
@@ -382,7 +313,7 @@ void DrawGL(void)
     }
 
     // view Matrix
-    LookAt(vMatrix,cameraPos[0],cameraPos[1],cameraPos[2],targetPos[0],targetPos[1],targetPos[2],0,1,0);
+    Teapot_Helper_LookAt(vMatrix,cameraPos[0],cameraPos[1],cameraPos[2],targetPos[0],targetPos[1],targetPos[2],0,1,0);
     Teapot_SetViewMatrixAndLightDirection(vMatrix,lightDirection);  // we must notify teapot.h, and we also pass the lightDirection here
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
