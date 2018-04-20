@@ -55,7 +55,8 @@
 //#define DYNAMIC_RESOLUTION_SHADOW_MAP_SIZE_FORCE_POT              // when defined the shadow texture size is approximated by its nearest power of two
 //#define DYNAMIC_RESOLUTION_SHADOW_MAP_MAX_SIZE                    // needs a value (default 2048). It clamps: shadow_texture.size = DYNAMIC_RESOLUTION_SHADOW_MAP_SIZE_MULTIPLIER * max(screen.width,screen.height); // (or its nearest POT)
 //#define DYNAMIC_RESOLUTION_SHADOW_USE_NEAREST_TEXTURE_FILTER      // (undefined is GL_LINEAR)
-//
+//#define DYNAMIC_RESOLUTION_SHADOW_USE_PCF 4                       // (optional, but needs a value>0, otherwise will be set to zero). Basically it prepares the shadow texture map to be used for PCF (teapot.h is used can track and use this value).
+//                                                                  // Warning: when DYNAMIC_RESOLUTION_SHADOW_USE_PCF is used with emscripten, it needs: -s USE_WEBGL2=1
 //
 //#define DYNAMIC_RESOLUTION_NUM_RENDER_TARGETS                     // (default is 1) Basically it pingpongs render targets, greatly increasing memory consumption. Not sure if it's faster or not and if it's artifact-free.
 
@@ -426,6 +427,23 @@ static void RenderTarget_Destroy(RenderTarget* rt) {
     if (rt->shadow_texture[0])         glDeleteTextures(DYNAMIC_RESOLUTION_NUM_RENDER_TARGETS,rt->shadow_texture);
     if (rt->shadowProgramId) {glDeleteProgram(rt->shadowProgramId);rt->shadowProgramId=0;}
 }
+static const char* RenderTarget_Helper_GetFramebufferStatusString(GLenum status) {
+    switch(status) {
+    case GL_FRAMEBUFFER_COMPLETE:                       return "GL_FRAMEBUFFER_COMPLETE";
+    case GL_FRAMEBUFFER_UNSUPPORTED:                    return "GL_FRAMEBUFFER_UNSUPPORTED";
+    case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT:  return "GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT";
+    case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT:          return "GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT";
+    case GL_FRAMEBUFFER_INCOMPLETE_DIMENSIONS_EXT:      return "GL_FRAMEBUFFER_INCOMPLETE_DIMENSIONS_EXT";
+    case GL_FRAMEBUFFER_INCOMPLETE_FORMATS_EXT:         return "GL_FRAMEBUFFER_INCOMPLETE_FORMATS_EXT";
+    case GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER:         return "GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER";
+    case GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER:         return "GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER";
+    case GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE:         return "GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE";
+    case GL_FRAMEBUFFER_UNDEFINED:                      return "GL_FRAMEBUFFER_UNDEFINED";
+    default:                                            return "GL_FRAMEBUFFER_UNKNOWN_ERROR";
+    }
+    return  "GL_FRAMEBUFFER_UNKNOWN_ERROR";
+}
+
 static void RenderTarget_Init(RenderTarget* rt,int width, int height) {
     int i;
     //glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -472,7 +490,7 @@ static void RenderTarget_Init(RenderTarget* rt,int width, int height) {
             {
                 //Does the GPU support current FBO configuration?
                 GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-                if (status!=GL_FRAMEBUFFER_COMPLETE) printf("glCheckFramebufferStatus(...) FAILED.\n");
+                if (status!=GL_FRAMEBUFFER_COMPLETE) printf("glCheckFramebufferStatus(...) FAILED: %s\n",RenderTarget_Helper_GetFramebufferStatusString(status));
             }
         }
         glBindTexture(GL_TEXTURE_2D, 0);
@@ -515,11 +533,10 @@ static void RenderTarget_Init(RenderTarget* rt,int width, int height) {
             //glTexParameteri(GL_TEXTURE_2D, GL_DEPTH_TEXTURE_MODE, GL_INTENSITY);
 #           endif //DYNAMIC_RESOLUTION_SHADOW_USE_PCF
 
+            // Clamp mode
 #           ifdef __EMSCRIPTEN__
-            glTexImage2D( GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, rt->shadow_texture_size, rt->shadow_texture_size, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_SHORT, 0);
             const GLenum clampMode = GL_CLAMP_TO_EDGE;  // Unluckily WebGL does not support GL_CLAMP or GL_CLAMP_TO_BORDER
-#           else //__EMSCRIPTEN__*/
-            glTexImage2D( GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, rt->shadow_texture_size, rt->shadow_texture_size, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, 0);
+#           else //__EMSCRIPTEN__
             const GLenum clampMode = //GL_CLAMP;    // sampling outside of the shadow map gives always shadowed pixels
                    // GL_CLAMP_TO_EDGE;             // sampling outside of the shadow map can give shadowed or unshadowed pixels (it depends on the edge of the shadow map)
                     GL_CLAMP_TO_BORDER;             // sampling outside of the shadow map gives always non-shadowed pixels (if we set the border color correctly)
@@ -527,6 +544,17 @@ static void RenderTarget_Init(RenderTarget* rt,int width, int height) {
                const GLfloat border[] = {1.0f,1.0f,1.0f,0.0f };
                glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, border);
             }
+#           endif //__EMSCRIPTEN__
+
+#           ifdef __EMSCRIPTEN__
+#               if DYNAMIC_RESOLUTION_SHADOW_USE_PCF>0
+                // In WebGL2: [GL_DEPTH_COMPONENT16 -> (GL_UNSIGNED_SHORT or GL_UNSIGNED_INT)], [GL_DEPTH_COMPONENT24 -> GL_UNSIGNED_INT] or [GL_DEPTH_COMPONENT32F -> GL_UNSIGNED_FLOAT] should be OK
+                glTexImage2D( GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT16, rt->shadow_texture_size, rt->shadow_texture_size, 0, GL_DEPTH_COMPONENT,  GL_UNSIGNED_INT, 0);
+#               else //DYNAMIC_RESOLUTION_SHADOW_USE_PCF==0
+                glTexImage2D( GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, rt->shadow_texture_size, rt->shadow_texture_size, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_SHORT, 0);
+#               endif //DYNAMIC_RESOLUTION_SHADOW_USE_PCF
+#           else //__EMSCRIPTEN__*/
+            glTexImage2D( GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, rt->shadow_texture_size, rt->shadow_texture_size, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, 0);
 #           endif // //__EMSCRIPTEN__*/
             glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, clampMode );
             glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, clampMode );
@@ -540,7 +568,7 @@ static void RenderTarget_Init(RenderTarget* rt,int width, int height) {
             {
                 //Does the GPU support current FBO configuration?
                 GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-                if (status!=GL_FRAMEBUFFER_COMPLETE) printf("glCheckFramebufferStatus(...) FAILED for shadow_frame_buffer.\n");
+                if (status!=GL_FRAMEBUFFER_COMPLETE) printf("glCheckFramebufferStatus(...) FAILED for shadow_frame_buffer: %s\n",RenderTarget_Helper_GetFramebufferStatusString(status));
             }
         }
         glBindTexture(GL_TEXTURE_2D, 0);

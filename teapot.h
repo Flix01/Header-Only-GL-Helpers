@@ -35,7 +35,10 @@
 //#define TEAPOT_SHADER_USE_NORMAL_MATRIX  // (slow) accurate normal calculations when the model(view) matrix has some scaling applied (instead of using Teapot_SetScaling(...)).
 //                                            But, overall, I think that leaving this definition out and just using Teapot_SetScaling(...) and orthonormal mvMatrices (= no glScalef(...)),
 //                                            is accurate enough, faster, and easier to use too. NOTE that you probably need to CHANGE something in your code if you switch this definition on/off.
-//#define TEAPOT_SHADER_USE_SHADOW_MAP      // (experimental) eases shadow mapping by supporting the second pass of the algorithm.
+//#define TEAPOT_SHADER_USE_SHADOW_MAP      // Eases shadow mapping by supporting the second pass of the algorithm.
+//#define TEAPOT_SHADER_SHADOW_MAP_PCF 4    // (optional, but needs a value>0, otherwise will be set to zero). Basically when TEAPOT_SHADER_USE_SHADOW_MAP is defined, PCF filter used (dynamic_resolution.h can automatically set this value when DYNAMIC_RESOLUTION_SHADOW_USE_PCF is used).
+//                                          // Warning: when TEAPOT_SHADER_SHADOW_MAP_PCF is used with emscripten, it needs: -s USE_WEBGL2=1
+//
 //#define TEAPOT_MAX_NUM_USER_MESH_VERTICES (3000)  // (experimental) default is 1000. Needed when, using Teapot_Set_Init_UserMeshCallback(...), you overflow the number of vertices. Warning: the max number of vertices for ALL meshes (= embedded + user) can't be bigger than 65535, because the indices are unsigned short.
 //#define TEAPOT_MAX_NUM_USER_MESH_INDICES (15000)  // (experimental) default is 5000. Needed when, using Teapot_Set_Init_UserMeshCallback(...), you overflow the number of indices.
 //
@@ -522,6 +525,11 @@ __inline static void Teapot_Helper_GlUniform3v(GLint location,GLsizei count,cons
 
 
 static const char* TeapotVS[] = {
+#   if (defined(__EMSCRIPTEN__) && defined(TEAPOT_SHADER_USE_SHADOW_MAP) && (TEAPOT_SHADER_SHADOW_MAP_PCF>0))
+    "#version 300 es\n"         // emscripten needs: -s USE_WEBGL2=1
+    "#define attribute in\n"
+    "#define varying out\n"
+#   endif //__EMSCRIPTEN__ && TEAPOT_SHADER_USE_SHADOW_MAP && TEAPOT_SHADER_SHADOW_MAP_PCF
     "#ifdef GL_ES\n"
     "precision highp float;\n"
     "#endif\n"
@@ -593,12 +601,12 @@ static const char* TeapotVS[] = {
 // 0.2 is the global ambient factor
 
 static const char* TeapotFS[] = {
-#   ifdef TEAPOT_SHADER_USE_SHADOW_MAP
-#       ifdef __EMSCRIPTEN__
-    "//#version 300 es\n"
-#       endif //__EMSCRIPTEN__
-    "//#version 130\n"    // textureProj(...) ?
-#   endif // TEAPOT_SHADER_USE_SHADOW_MAP
+#   if (defined(__EMSCRIPTEN__) && defined(TEAPOT_SHADER_USE_SHADOW_MAP) && (TEAPOT_SHADER_SHADOW_MAP_PCF>0))
+    "#version 300 es\n"         // emscripten needs: -s USE_WEBGL2=1
+    "#define varying in\n"
+    "#define shadow2D texture\n"
+    "#define gl_FragColor FragColor\n"
+#   endif //__EMSCRIPTEN__ && TEAPOT_SHADER_USE_SHADOW_MAP && TEAPOT_SHADER_SHADOW_MAP_PCF
     "#define TABSSQRT "XSTR_MACRO(TEAPOT_SHADER_SHADOW_MAP_PCF)"\n"
     "#ifdef GL_ES\n"
     "precision mediump float;\n"
@@ -611,11 +619,18 @@ static const char* TeapotFS[] = {
     "varying float v_fog;\n"
 #   endif //TEAPOT_SHADER_FOG_HINT_FRAGMENT_SHADER
 #   endif
+#   if (defined(__EMSCRIPTEN__) && defined(TEAPOT_SHADER_USE_SHADOW_MAP) && (TEAPOT_SHADER_SHADOW_MAP_PCF>0))
+    "out vec4 gl_FragColor;\n"
+#   endif //__EMSCRIPTEN__ && TEAPOT_SHADER_USE_SHADOW_MAP && TEAPOT_SHADER_SHADOW_MAP_PCF
 #   ifdef TEAPOT_SHADER_USE_SHADOW_MAP
 #       if (TEAPOT_SHADER_SHADOW_MAP_PCF<1)
     "       uniform sampler2D u_shadowMap;\n"
 #       else    // TEAPOT_SHADER_SHADOW_MAP_PCF
+#           ifdef __EMSCRIPTEN__
+    "       uniform lowp sampler2DShadow u_shadowMap;\n"
+#           else //__EMSCRIPTEN__
     "       uniform sampler2DShadow u_shadowMap;\n"
+#           endif //__EMSCRIPTEN__
 #       endif   // TEAPOT_SHADER_SHADOW_MAP_PCF
     "uniform vec2 u_shadowDarkening;\n" // .x = fDarkeningFactor [10.0-80.0], .y = min value clamp [0.0-1.0]
     "uniform vec4 u_ambientColor;\n"
@@ -656,7 +671,6 @@ static const char* TeapotFS[] = {
     "       shadowFactor = u_shadowDarkening.y + (1.0-u_shadowDarkening.y)*shadowFactor;\n"
 #       endif //TEAPOT_SHADER_SHADOW_MAP_PCF
 #   endif //TEAPOT_SHADER_USE_SHADOW_MAP
-
 #   ifdef TEAPOT_SHADER_FOG
 #   ifdef TEAPOT_SHADER_FOG_HINT_FRAGMENT_SHADER
     "   //float v_fog = 1.0 - (u_fogDistances.y-gl_FragCoord.z/gl_FragCoord.w)*u_fogDistances.w;\n" // Best quality but expensive...
@@ -667,6 +681,7 @@ static const char* TeapotFS[] = {
     "    gl_FragColor = vec4(v_color.rgb*shadowFactor,v_color.a);\n"
     "}\n"
 };
+
 
 typedef struct {
     GLuint programId;

@@ -32,7 +32,8 @@ gcc -O2 -std=gnu89 test_shadows.c -o test_shadows -I"../" -lglut -lGL -lX11 -lm
 cl /O2 /MT /Tc test_shadows.c /D"TEAPOT_NO_RESTRICT" /D"DYNAMIC_RESOLUTION_NO_RESTRICT" /D"GLEW_STATIC" /I"../" /link /out:test_shadows.exe glut32.lib glew32s.lib opengl32.lib gdi32.lib Shell32.lib comdlg32.lib user32.lib kernel32.lib
 // EMSCRIPTEN:
 emcc -O2 -std=gnu89 -fno-rtti -fno-exceptions -o test_shadows.html test_shadows.c -I"./" -I"../" -s LEGACY_GL_EMULATION=0 --closure 1
-(for web assembly add: -s WASM=1)
+(for PCF shadows 2x2 add: -D"DYNAMIC_RESOLUTION_SHADOW_USE_PCF=2" -s USE_WEBGL2=1)
+(for web assembly add:    -s WASM=1)
 
 // IN ADDITION:
 By default the source file assumes that every OpenGL-related header is in "GL/".
@@ -87,8 +88,8 @@ for glut.h, glew.h, etc. with something like:
 // "dynamic_resolution.h" implements the first shadow mapping step and optionally dynamic resolution (that by default should keep frame rate > config.dynamic_resolution_target_fps)
 //#define DYNAMIC_RESOLUTION_USE_GLSL_VERSION_330       // (Optional) Not sure it's faster...
 //#define DYNAMIC_RESOLUTION_SHADOW_MAP_SIZE_FORCE_POT    // There are other definitions that affect the shadow map resolution. Please see dynamic_resolution.h.
-#ifndef __EMSCRIPTEN__
-//#   define DYNAMIC_RESOLUTION_SHADOW_USE_PCF 4  // Optional [but expensive] Percentage Closing Filter Shadows (emscripten would need -s USE_WEBGL2=1 plus a full rewrite of the shader in teapot.h in modern WebGL... but I prefer backward compatibility with WebGL 1.0)
+#if (!defined(__EMSCRIPTEN__) && !defined(DYNAMIC_RESOLUTION_SHADOW_USE_PCF))
+//#   define DYNAMIC_RESOLUTION_SHADOW_USE_PCF 4  // Optional [but expensive] Percentage Closing Filter Shadows (for this to work emscripten needs in the command-line: -s USE_WEBGL2=1 )
 #endif //__EMSCRIPTEN__
 #define DYNAMIC_RESOLUTION_IMPLEMENTATION               // Mandatory in 1 source file (.c or .cpp)
 #include "dynamic_resolution.h"

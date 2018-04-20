@@ -312,7 +312,7 @@ static __inline imoat IMVector3Dot(const imoat v0[3],const imoat v1[3]) {
     return v0[0]*v1[0]+v0[1]*v1[1]+v0[2]*v1[2];
 }
 static __inline void IMVector3Normalize(imoat v[3]) {
-    imoat len = IMDVector3Dot(v,v);int i;
+    imoat len = IMVector3Dot(v,v);int i;
     if (len!=0) {
         len = sqrt(len);
         for (i=0;i<3;i++) v[i]/=len;
