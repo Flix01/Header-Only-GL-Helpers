@@ -1203,10 +1203,10 @@ int Teapot_Helper_IsVisible(const tpoat frustumPlanes[6][4],const tpoat*__restri
     return 1;
 }
 int Teapot_Helper_UnProject_MvpMatrixInv(tpoat winX,tpoat winY,tpoat winZ,const tpoat* __restrict mvpMatrixInv16,const int* viewport4,tpoat* objX,tpoat* objY,tpoat* objZ)    {
-// To compute the coordinates objX objY objZ , gluUnProject multiplies the normalized device coordinates by the inverse of model * proj as follows:
-// [objX objY objZ W] = INV(P*M) * ⁢ [2*(winX-view[0])/view[2]-1    2*(winY-view[1])/view[3]-1  2*winZ-1    1]
-// INV denotes matrix inversion. W is an unused variable, included for consistent matrix notation.
-   tpoat pm[16],*invpm = mvpMatrixInv16;
+    // To compute the coordinates objX objY objZ , gluUnProject multiplies the normalized device coordinates by the inverse of model * proj as follows:
+    // [objX objY objZ W] = INV(P*M) * ⁢ [2*(winX-view[0])/view[2]-1    2*(winY-view[1])/view[3]-1  2*winZ-1    1]
+    // INV denotes matrix inversion. W is an unused variable, included for consistent matrix notation.
+   const tpoat *invpm = mvpMatrixInv16;
    // normalized device coords
    const tpoat v[4] = {
       2*(winX-(tpoat)viewport4[0])/(tpoat)viewport4[2]-1,
