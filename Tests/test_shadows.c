@@ -256,6 +256,8 @@ static int numMeshData = 0; // initial value (see InitGL())
 static Teapot_MeshData* pAnimatedMeshData0 = NULL;
 static Teapot_MeshData* pAnimatedMeshData1 = NULL;
 
+static Teapot_MeshData* pMouseSelectedMeshData = NULL;
+
 
 #ifdef TEST_ADD_USER_MESH
 // defined at the bottom
@@ -562,9 +564,9 @@ void DrawGL(void)
 
     Teapot_PreDraw();
 
-    // We can add an aabb frame around any object
-    /*{
-        const Teapot_MeshData* md = pAnimatedMeshData0;
+    // We can add an aabb frame around any object (here we use mouse selection)
+    if (pMouseSelectedMeshData) {
+        const Teapot_MeshData* md = pMouseSelectedMeshData; //pAnimatedMeshData0;
         static float aabb[3];
         Teapot_GetMeshAabbExtents(md->meshId,aabb);
         Teapot_SetColor(0.4,0.4,0,1);
@@ -575,7 +577,7 @@ void DrawGL(void)
         // Or better we can move this snippet below Teapot_DrawMulti(pMeshData,numMeshData,1),
         // because Teapot_DrawMulti(...) internally sets all the mvMatrices and then calls Teapot_DrawMulti_Mv(pMeshData,numMeshData,1).
         Teapot_Draw_Mv(md->mvMatrix,TEAPOT_MESHLINES_CUBE_EDGES);
-    }*/
+    }
 
     // We can add a pivot at the camera target point
     {
@@ -815,8 +817,10 @@ void GlutSpecialKeys(int key,int x,int y)
     }
 }
 
-void GlutMouse(int a,int b,int c,int d) {
-
+void GlutMouse(int button,int state,int x,int y) {
+    const int viewport[4] = {0,0,current_width,current_height};
+    if (button==GLUT_LEFT_BUTTON && state==GLUT_DOWN)
+        pMouseSelectedMeshData = Teapot_MeshData_GetMeshUnderMouse(pMeshData,numMeshData,x,y,viewport,0);
 }
 
 // Note that we have used GlutFakeDrawGL() so that at startup

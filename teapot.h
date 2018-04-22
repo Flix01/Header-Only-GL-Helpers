@@ -250,6 +250,7 @@ static __inline void Teapot_MeshData_SetOutlineEnabled(Teapot_MeshData* md,int m
 static __inline void Teapot_MeshData_SetMeshId(Teapot_MeshData* md,TeapotMeshEnum meshId) {md->meshId = meshId;}
 void Teapot_MeshData_CalculateMvMatrix(Teapot_MeshData* md);    // From mMatrix (called internally when Teapot_DrawMulti(...) is used)
 void Teapot_MeshData_CalculateMvMatrixFromArray(Teapot_MeshData** meshes,int numMeshes);  // From mMatrix (called internally when Teapot_DrawMulti(...) is used)
+Teapot_MeshData* Teapot_MeshData_GetMeshUnderMouse(Teapot_MeshData* const* meshes,int numMeshes,int mouseX,int mouseY,const int* viewport4,tpoat* pOptionalDistanceOut);
 
 void Teapot_DrawMulti(Teapot_MeshData** meshes,int numMeshes,int mustSortObjectsForTransparency);  // 'mustSortObjectsForTransparency' requires glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); and  glDisable(GL_BLEND); At the end it restores glDisable(GL_BLEND); if used.
 void Teapot_DrawMulti_Mv(Teapot_MeshData* const* meshes,int numMeshes,int mustSortObjectsForTransparency);  // Same as above, but use it only if you set or calculate all the Teapot_MeshData::mvMatrix[16] manually
@@ -417,6 +418,14 @@ static __inline tpoat Teapot_Helper_Round(tpoat number)	{return number < 0.0 ? c
 
 // It "should" performs AABB test. mfMatrix16 is the matrix M so that: F*M = mvpMatrix (F being the matrix used to extract the frustum planes). Here we use: F=pMatrix and M=mvMatrix, but it could be: F=vpMatrix and M=mMatrix too.
 int Teapot_Helper_IsVisible(const tpoat frustumPlanes[6][4],const tpoat*__restrict mfMatrix16,tpoat aabbMinX,tpoat aabbMinY,tpoat aabbMinZ,tpoat aabbMaxX,tpoat aabbMaxY,tpoat aabbMaxZ);
+int Teapot_Helper_UnProject_MvpMatrixInv(tpoat winX,tpoat winY,tpoat winZ,const tpoat* __restrict mvpMatrixInv16,const int* viewport4,tpoat* objX,tpoat* objY,tpoat* objZ);
+// Maps the specified window coordinates into object coordinates using mvMatrix16, pMatrix16, and viewport4.
+// The result is stored in objX, objY, and objZ. A return value of 1 indicates success; a return value of 0 indicates failure.
+// viewport4 Specifies the current viewport (as from a glGetIntegerv call).
+static __inline int Teapot_Helper_UnProject(tpoat winX,tpoat winY,tpoat winZ,const tpoat* __restrict mvMatrix16,const tpoat* __restrict pMatrix16,const int* viewport4,tpoat* objX,tpoat* objY,tpoat* objZ) {
+    tpoat mvpMatrixInv[16];Teapot_Helper_MultMatrix(mvpMatrixInv,pMatrix16,mvMatrix16);Teapot_Helper_InvertMatrix(mvpMatrixInv,mvpMatrixInv);
+    return Teapot_Helper_UnProject_MvpMatrixInv(winX,winY,winZ,mvpMatrixInv,viewport4,objX,objY,objZ);
+}
 
 static __inline void Teapot_Helper_ConvertMatrixd2f16(float* __restrict result16,const double* __restrict m16) {int i;for(i = 0; i < 16; i++) result16[i]=(float)m16[i];}
 static __inline void Teapot_Helper_ConvertMatrixf2d16(double* __restrict result16,const float* __restrict m16) {int i;for(i = 0; i < 16; i++) result16[i]=(double)m16[i];}
@@ -1192,6 +1201,104 @@ int Teapot_Helper_IsVisible(const tpoat frustumPlanes[6][4],const tpoat*__restri
         // Furthermore we still have a lot of false positives in both cases
     }
     return 1;
+}
+int Teapot_Helper_UnProject_MvpMatrixInv(tpoat winX,tpoat winY,tpoat winZ,const tpoat* __restrict mvpMatrixInv16,const int* viewport4,tpoat* objX,tpoat* objY,tpoat* objZ)    {
+// To compute the coordinates objX objY objZ , gluUnProject multiplies the normalized device coordinates by the inverse of model * proj as follows:
+// [objX objY objZ W] = INV(P*M) * ⁢ [2*(winX-view[0])/view[2]-1    2*(winY-view[1])/view[3]-1  2*winZ-1    1]
+// INV denotes matrix inversion. W is an unused variable, included for consistent matrix notation.
+   tpoat pm[16],*invpm = mvpMatrixInv16;
+   // normalized device coords
+   const tpoat v[4] = {
+      2*(winX-(tpoat)viewport4[0])/(tpoat)viewport4[2]-1,
+      2*(winY-(tpoat)viewport4[1])/(tpoat)viewport4[3]-1,
+      2*winZ-1,
+      1
+   };
+   tpoat objW = 0;
+   // calculate obj
+   *objX =  v[0]*invpm[0] + v[1]*invpm[4] + v[2]*invpm[8]  + v[3]*invpm[12];
+   *objY =  v[0]*invpm[1] + v[1]*invpm[5] + v[2]*invpm[9]  + v[3]*invpm[13];
+   *objZ =  v[0]*invpm[2] + v[1]*invpm[6] + v[2]*invpm[10] + v[3]*invpm[14];
+    objW =  v[0]*invpm[3] + v[1]*invpm[7] + v[2]*invpm[11] + v[3]*invpm[15];
+   /* *objX =  v[0]*invpm[0] + v[1]*invpm[1] + v[2]*invpm[2]  + v[3]*invpm[3];
+   *objY =  v[0]*invpm[4] + v[1]*invpm[5] + v[2]*invpm[6]  + v[3]*invpm[7];
+   *objZ =  v[0]*invpm[8] + v[1]*invpm[9] + v[2]*invpm[10] + v[3]*invpm[11];*/
+   //objW  =  v[0]*invpm[12] + v[1]*invpm[13] + v[2]*invpm[14] + v[3]*invpm[15];
+   if (objW!=0 && objW!=1) {(*objX)/=objW;(*objY)/=objW;(*objZ)/=objW;}
+   return 1;
+}
+Teapot_MeshData* Teapot_MeshData_GetMeshUnderMouse(Teapot_MeshData* const* meshes,int numMeshes,int mouseX,int mouseY,const int* viewport4,tpoat* pOptionalDistanceOut) {
+    Teapot_MeshData* rv = 0;
+    tpoat vpMatrixInv[16];
+    tpoat rayOrigin[3] = {0,0,0};
+    tpoat rayDir[3] = {0,0,-1};
+    tpoat aabbMin[3],aabbMax[3];
+    tpoat intersection_distance = 0;
+    int i,j;
+    if (pOptionalDistanceOut) *pOptionalDistanceOut=intersection_distance;
+    if (!meshes || numMeshes<=0 || !viewport4) return rv;
+
+    // 1) Find rayOrigin and rayDir (world space)
+    Teapot_Helper_MultMatrix(vpMatrixInv,TIS.pMatrix,TIS.vMatrix);
+    Teapot_Helper_InvertMatrix(vpMatrixInv,vpMatrixInv);
+    Teapot_Helper_UnProject_MvpMatrixInv(mouseX,viewport4[3]-mouseY-1,0.0,vpMatrixInv,viewport4,&rayOrigin[0],&rayOrigin[1],&rayOrigin[2]);
+    Teapot_Helper_UnProject_MvpMatrixInv(mouseX,viewport4[3]-mouseY-1,1.0,vpMatrixInv,viewport4,&rayDir[0],&rayDir[1],&rayDir[2]);
+    for (i=0;i<3;i++) rayDir[i]-=rayOrigin[i];Teapot_Helper_Vector3Normalize(rayDir);
+    //printf("rayOrigin={%1.2f,%1.2f,%1.2f} rayDir={%1.2f,%1.2f,%1.2f}\n",rayOrigin[0],rayOrigin[1],rayOrigin[2],rayDir[0],rayDir[1],rayDir[2]);
+
+    // 2) Loop all meshes and find OBB vs ray intersection
+    // Code based on: http://www.opengl-tutorial.org/miscellaneous/clicking-on-objects/picking-with-custom-ray-obb-function/ (WTFPL Public Licence)
+    for (i=0;i<numMeshes;i++)   {
+        const Teapot_MeshData* md = meshes[i];
+        const tpoat* obbMatrix = md->mMatrix;
+        tpoat tMin = 0;tpoat tMax = 1000000000000;
+        int noCollisionDetected = 0;
+        tpoat obbPosDelta[3] =  {obbMatrix[12]-rayOrigin[0],obbMatrix[13]-rayOrigin[1],obbMatrix[14]-rayOrigin[2]};
+        //Teapot_Helper_Vector3Normalize(obbPosDelta);
+        //for (j=0;j<3;j++) obbPosDelta[i]=-obbPosDelta[i];
+
+        Teapot_GetMeshAabbMinAndMax(md->meshId,aabbMin,aabbMax);
+        for (j=0;j<3;j++) {aabbMin[j]*=md->scaling[j];aabbMax[j]*=md->scaling[j];}
+
+        for (j=0;j<3;j++)   {
+            if (!noCollisionDetected)   {
+                int j4 = 4*j;
+                // Test intersection with the 2 planes perpendicular to the OBB's j axis
+                const tpoat axis[3] = {obbMatrix[j4],obbMatrix[j4+1],obbMatrix[j4+2]};
+                const tpoat e = Teapot_Helper_Vector3Dot(axis, obbPosDelta);
+                const tpoat f = Teapot_Helper_Vector3Dot(rayDir, axis);
+
+                //if ( abs(f) > 0.001)  // @Flix: the reference code used this (but it does not work for me; so maybe my selection does not work with a projection ortho matrix...)
+                {
+                    // Standard case
+                    // t1 and t2 now contain distances betwen ray origin and ray-plane intersections:
+                    tpoat t1 = (e+aabbMin[j])/f; // Intersection with the "left" plane
+                    tpoat t2 = (e+aabbMax[j])/f; // Intersection with the "right" plane
+                    // We want t1 to represent the nearest intersection, so if it's not the case, invert t1 and t2
+                    if (t1>t2)  {tpoat w=t1;t1=t2;t2=w;}
+                    if (t2 < tMax)    tMax = t2;
+                    if (t1 > tMin)    tMin = t1;
+                    // And here's the trick :
+                    // If "far" is closer than "near", then there is NO intersection.
+                    // See the images in the tutorials for the visual explanation.
+                    if (tMin > tMax) noCollisionDetected=1;
+
+                }
+                /*else    {
+                    // Rare case : the ray is almost parallel to the planes, so they don't have any "intersection"
+                    if(-e+aabbMin[j] > 0.0 || -e+aabbMax[j] < 0.0) noCollisionDetected=1;
+                }*/
+            }
+        }
+
+        if (!noCollisionDetected && (intersection_distance<=0 || intersection_distance>tMin))   {
+            intersection_distance = tMin;
+            rv = (Teapot_MeshData*) md;
+        }
+    }
+
+    if (pOptionalDistanceOut) *pOptionalDistanceOut=intersection_distance;
+    return rv;
 }
 
 
