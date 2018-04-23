@@ -1232,7 +1232,6 @@ Teapot_MeshData* Teapot_MeshData_GetMeshUnderMouse(Teapot_MeshData* const* meshe
     tpoat vpMatrixInv[16];
     tpoat rayOrigin[3] = {0,0,0};
     tpoat rayDir[3] = {0,0,-1};
-    tpoat aabbMin[3],aabbMax[3];
     tpoat intersection_distance = 0;
     int i,j;
     if (pOptionalDistanceOut) *pOptionalDistanceOut=intersection_distance;
@@ -1253,12 +1252,18 @@ Teapot_MeshData* Teapot_MeshData_GetMeshUnderMouse(Teapot_MeshData* const* meshe
         const tpoat* obbMatrix = md->mMatrix;
         tpoat tMin = 0;tpoat tMax = 1000000000000;
         int noCollisionDetected = 0;
-        tpoat obbPosDelta[3] =  {obbMatrix[12]-rayOrigin[0],obbMatrix[13]-rayOrigin[1],obbMatrix[14]-rayOrigin[2]};
+        tpoat obbPosDelta[3] =  {obbMatrix[12]-rayOrigin[0],obbMatrix[13]-rayOrigin[1],obbMatrix[14]-rayOrigin[2]};        
+        const float* scaling = md->scaling;
+        const tpoat aabbMin[3] = {TIS.aabbMin[md->meshId][0]*scaling[0],TIS.aabbMin[md->meshId][1]*scaling[1],TIS.aabbMin[md->meshId][2]*scaling[2]};
+        const tpoat aabbMax[3] = {TIS.aabbMax[md->meshId][0]*scaling[0],TIS.aabbMax[md->meshId][1]*scaling[1],TIS.aabbMax[md->meshId][2]*scaling[2]};
         //Teapot_Helper_Vector3Normalize(obbPosDelta);
         //for (j=0;j<3;j++) obbPosDelta[i]=-obbPosDelta[i];
 
-        Teapot_GetMeshAabbMinAndMax(md->meshId,aabbMin,aabbMax);
-        for (j=0;j<3;j++) {aabbMin[j]*=md->scaling[j];aabbMax[j]*=md->scaling[j];}
+        // Warning: aabbMin and aabbMax are WRONG when md->mashId==TEAPOT_MESH_CAPSULE and a non-uniform scaling is applied.
+        // unluckily TEAPOT_MESH_CAPSULE is special... sorry!
+        // We should recalculate 'aabbMin' and 'aabbMax' based on 'scaling' and the definition 'TEAPOT_CENTER_MESHES_ON_FLOOR'.
+        // This is a hard work we're not going to perform ATM. Tip: implementation of 'Teapot_MeshData_HiLevel_DrawMulti_ShadowMap_Vp_Internal(...)' might help for this task.
+        //if (md->meshId==TEAPOT_MESH_CAPSULE) printf("TEAPOT_MESH_CAPSULE: aabbMin(%1.3f,%1.3f,%1.3f) aabbMax(%1.3f,%1.3f,%1.3f)\n",aabbMin[0],aabbMin[1],aabbMin[2],aabbMax[0],aabbMax[1],aabbMax[2]);
 
         for (j=0;j<3;j++)   {
             if (!noCollisionDetected)   {
@@ -1514,8 +1519,8 @@ void Teapot_Draw_Mv(const tpoat mvMatrix[16], TeapotMeshEnum meshId)    {
     }
 
 #   ifdef TEAPOT_ENABLE_FRUSTUM_CULLING
-    if ((meshId<TEAPOT_MESH_TEXT_X || meshId>TEAPOT_MESH_TEXT_Z) &&
-        meshId!=TEAPOT_MESH_CYLINDER_LATERAL_SURFACE   // Frustum culling doesn't work on this (to fix)
+    if ((meshId<TEAPOT_MESH_TEXT_X || meshId>TEAPOT_MESH_TEXT_Z)
+        && meshId!=TEAPOT_MESH_CYLINDER_LATERAL_SURFACE   // Frustum culling doesn't work on this (to fix)
         )
         {
         const float scaling[3] = {TIS.scaling[0],TIS.scaling[1],TIS.scaling[2]};
@@ -3182,9 +3187,18 @@ void Teapot_Init(void) {
                         TIS.halfExtents[i][j] = TIS.halfExtents[TEAPOT_MESH_CYLINDER][j];
                         TIS.centerPoint[i][j] = TIS.centerPoint[TEAPOT_MESH_CYLINDER][j];
                     }
+                    if (TIS.halfExtents[TEAPOT_MESH_HALF_SPHERE_UP][1]==0)      TIS.halfExtents[TEAPOT_MESH_HALF_SPHERE_UP][1] = 0.25;
+                    if (TIS.halfExtents[TEAPOT_MESH_HALF_SPHERE_DOWN][1]==0)    TIS.halfExtents[TEAPOT_MESH_HALF_SPHERE_DOWN][1] = 0.25;
                     TIS.halfExtents[i][1] += TIS.halfExtents[TEAPOT_MESH_HALF_SPHERE_UP][1]+TIS.halfExtents[TEAPOT_MESH_HALF_SPHERE_DOWN][1];
+                    {
+                        for (j=0;j<3;j++) {
+                            TIS.aabbMin[i][j] = TIS.centerPoint[i][j] - TIS.halfExtents[i][j];
+                            TIS.aabbMax[i][j] = TIS.centerPoint[i][j] + TIS.halfExtents[i][j];
+                        }
+                        //printf("CAPSULE: aabbMin(%1.3f,%1.3f,%1.3f) aabbMax(%1.3f,%1.3f,%1.3f) [%1.3f,%1.3f]\n",TIS.aabbMin[i][0],TIS.aabbMin[i][1],TIS.aabbMin[i][2],TIS.aabbMax[i][0],TIS.aabbMax[i][1],TIS.aabbMax[i][2],TIS.halfExtents[TEAPOT_MESH_HALF_SPHERE_UP][1],TIS.halfExtents[TEAPOT_MESH_HALF_SPHERE_DOWN][1]);
+                    }
 #                   ifdef TEAPOT_CENTER_MESHES_ON_FLOOR
-                    TIS.centerPoint[i][1]-=TIS.halfExtents[TEAPOT_MESH_HALF_SPHERE_DOWN][1];
+                    TIS.centerPoint[i][1]-=TIS.halfExtents[i][1];
 #                   endif //TEAPOT_CENTER_MESHES_ON_FLOOR
                 }
 #               endif

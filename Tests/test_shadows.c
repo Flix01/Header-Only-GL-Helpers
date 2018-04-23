@@ -305,7 +305,8 @@ void InitGL(void) {
 #   endif
 
 #   ifdef TEAPOT_SHADER_USE_SHADOW_MAP
-    Teapot_SetShadowDarkening(40.f,0.75f);  // First number makes the shadow darker in an uniform way, the second clamps the lower intensity: (40.f,0.75f) default, (0.f,...) -> no shadows
+    Teapot_SetShadowDarkening(40.f,0.75f);  // First number makes the shadow darker in an uniform way, the second clamps the lower intensity: (40.f,0.75f) default, (...,1.0f) -> no shadows
+                                            // [However if TEAPOT_SHADER_SHADOW_MAP_PCF>0, then (0.1f/first_number) is the shadow bias (or 0.0f if zero)].
 #   endif //TEAPOT_SHADER_USE_SHADOW_MAP
 
     // This line can change the look of the demo considerably. Try commenting it out!
@@ -440,6 +441,7 @@ void InitGL(void) {
         // (capsule)
         md = pMeshData[i++];
         Teapot_MeshData_SetScaling(md,0.25f,0.35f,0.25f);
+        //Teapot_MeshData_SetScaling(md,1.f,1.f,1.f);
         Teapot_MeshData_SetColor(md,0.4f,0.8f,0.2f,1.0f);
         mMatrix[12]=0.75;   mMatrix[13]=0.0;    mMatrix[14]=-1.5;
         Teapot_MeshData_SetMMatrix(md,mMatrix);
