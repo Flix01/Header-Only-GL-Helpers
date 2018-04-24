@@ -250,6 +250,7 @@ static __inline void Teapot_MeshData_SetOutlineEnabled(Teapot_MeshData* md,int m
 static __inline void Teapot_MeshData_SetMeshId(Teapot_MeshData* md,TeapotMeshEnum meshId) {md->meshId = meshId;}
 void Teapot_MeshData_CalculateMvMatrix(Teapot_MeshData* md);    // From mMatrix (called internally when Teapot_DrawMulti(...) is used)
 void Teapot_MeshData_CalculateMvMatrixFromArray(Teapot_MeshData** meshes,int numMeshes);  // From mMatrix (called internally when Teapot_DrawMulti(...) is used)
+// I think the following function works only if no scaling is inside any Teapot_MeshData::mMatrix (But Teapot_MeshData_SetScaling(...) is OK):
 Teapot_MeshData* Teapot_MeshData_GetMeshUnderMouse(Teapot_MeshData* const* meshes,int numMeshes,int mouseX,int mouseY,const int* viewport4,tpoat* pOptionalDistanceOut);
 
 void Teapot_DrawMulti(Teapot_MeshData** meshes,int numMeshes,int mustSortObjectsForTransparency);  // 'mustSortObjectsForTransparency' requires glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); and  glDisable(GL_BLEND); At the end it restores glDisable(GL_BLEND); if used.
@@ -284,25 +285,26 @@ void Teapot_Set_MeshOutline_Color(float R,float G, float B, float A);	// A<1.0 r
 void Teapot_Set_MeshOutline_Scaling(float scalingGreaterOrEqualThanOne);    // default is 1.015f
 void Teapot_Set_MeshOutline_Params(float polygonOffsetSlope, float polygonOffsetConstant);  // defaults are -1.f, -250.f
 
-static __inline void Teapot_Helper_IdentityMatrix(tpoat* __restrict result16) {
+static __inline tpoat* Teapot_Helper_IdentityMatrix(tpoat* __restrict result16) {
     tpoat* m = result16;
     m[0]=m[5]=m[10]=m[15]=1;
     m[1]=m[2]=m[3]=m[4]=m[6]=m[7]=m[8]=m[9]=m[11]=m[12]=m[13]=m[14]=0;
+    return result16;
 }
 static __inline void Teapot_Helper_CopyMatrix(tpoat* __restrict dst16,const tpoat* __restrict src16) {
     int i;for (i=0;i<16;i++) dst16[i]=src16[i];
 }
-static __inline void Teapot_Helper_MultMatrix(tpoat* __restrict result16,const tpoat* __restrict ml16,const tpoat* __restrict mr16) {
+static __inline tpoat* Teapot_Helper_MultMatrix(tpoat* __restrict result16,const tpoat* __restrict ml16,const tpoat* __restrict mr16) {
     int i,j,j4;
     if (result16==ml16) {
         tpoat ML16[16];Teapot_Helper_CopyMatrix(ML16,ml16);
         Teapot_Helper_MultMatrix(result16,ML16,mr16);
-        return;
+        return result16;
     }
     else if (result16==mr16) {
         tpoat MR16[16];Teapot_Helper_CopyMatrix(MR16,mr16);
         Teapot_Helper_MultMatrix(result16,ml16,MR16);
-        return;
+        return result16;
     }
     for(i = 0; i < 4; i++) {
         for(j = 0; j < 4; j++) {
@@ -314,7 +316,7 @@ static __inline void Teapot_Helper_MultMatrix(tpoat* __restrict result16,const t
                 ml16[i+12] * mr16[3+j4];
         }
     }
-
+    return result16;
 /*
 // Auto vectorization Tests
 typedef struct MYV {tpoat v[4][4];} MYV;
@@ -351,6 +353,9 @@ void mmul(double **m1, double **m2, double **m3, int N, int M, int P)
 void Teapot_Helper_LookAt(tpoat* __restrict mOut16,tpoat eyeX,tpoat eyeY,tpoat eyeZ,tpoat centerX,tpoat centerY,tpoat centerZ,tpoat upX,tpoat upY,tpoat upZ);
 void Teapot_Helper_Perspective(tpoat* __restrict mOut16,tpoat degfovy,tpoat aspect, tpoat zNear, tpoat zFar);
 void Teapot_Helper_Ortho(tpoat* __restrict mOut16,tpoat left,tpoat right, tpoat bottom, tpoat top,tpoat nearVal,tpoat farVal);
+tpoat* Teapot_Helper_TranslateMatrix(tpoat* __restrict mInOut16,tpoat x,tpoat y,tpoat z);
+tpoat* Teapot_Helper_RotateMatrix(tpoat* __restrict mInOut16,tpoat degAngle,tpoat x,tpoat y,tpoat z);
+tpoat* Teapot_Helper_ScaleMatrix(tpoat* __restrict mInOut16,tpoat x,tpoat y,tpoat z);
 int Teapot_Helper_InvertMatrix(tpoat* __restrict mOut16,const tpoat* __restrict m16);
 void Teapot_Helper_InvertMatrixFast(tpoat* __restrict mOut16,const tpoat* __restrict m16);
 void Teapot_Helper_GetFrustumPlaneEquations(tpoat planeEquationsOut[6][4],const tpoat* __restrict vpMatrix16,int normalizePlanes);
@@ -842,6 +847,33 @@ void Teapot_Helper_Ortho(tpoat* __restrict mOut16,tpoat left,tpoat right, tpoat 
     res[14] = (farVal+nearVal)/Dfn;
     res[15] = 1;
 }
+tpoat* Teapot_Helper_TranslateMatrix(tpoat* __restrict mInOut16,tpoat x,tpoat y,tpoat z)  {
+    const tpoat m[16] = {
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, 1, 0,
+        x, y, z, 1};
+    return Teapot_Helper_MultMatrix(mInOut16,mInOut16,m);
+}
+tpoat* Teapot_Helper_RotateMatrix(tpoat* __restrict mInOut16,tpoat degAngle,tpoat x,tpoat y,tpoat z)  {
+    const tpoat angle = degAngle*M_PIOVER180;
+    const tpoat c = cos(angle);
+    const tpoat s = sin(angle);
+    tpoat len = x*x+y*y+z*z;
+    if (len<0.999f || len>1.001f) {len=sqrt(len);x/=len;y/=len;z/=len;}
+    {
+        const tpoat m[16] = {
+            c + x*x*(1-c),  y*x*(1-c)+z*s,    z*x*(1-c)-y*s,    0,
+            x*y*(1-c) - z*s,  c + y*y*(1-c),      z*y*(1-c) + x*s,    0,
+            x*z*(1-c) + y*s,  y*z*(1-c) - x*s,    c + z*z*(1-c),      0,
+            0,              0,                  0,                  1};
+        return Teapot_Helper_MultMatrix(mInOut16,mInOut16,m);
+    }
+}
+tpoat* Teapot_Helper_ScaleMatrix(tpoat* __restrict mInOut16,tpoat x,tpoat y,tpoat z)  {
+    const tpoat m[16] = {x, 0, 0, 0, 0, y, 0, 0, 0, 0, z, 0, 0, 0, 0, 1};
+    return Teapot_Helper_MultMatrix(mInOut16,mInOut16,m);
+}
 int Teapot_Helper_InvertMatrix(tpoat* __restrict mOut16,const tpoat* __restrict m16)	{
     const tpoat* m = m16;
     tpoat* n = mOut16;
@@ -1250,20 +1282,30 @@ Teapot_MeshData* Teapot_MeshData_GetMeshUnderMouse(Teapot_MeshData* const* meshe
     for (i=0;i<numMeshes;i++)   {
         const Teapot_MeshData* md = meshes[i];
         const tpoat* obbMatrix = md->mMatrix;
+        const TeapotMeshEnum meshId = md->meshId;
         tpoat tMin = 0;tpoat tMax = 1000000000000;
         int noCollisionDetected = 0;
         tpoat obbPosDelta[3] =  {obbMatrix[12]-rayOrigin[0],obbMatrix[13]-rayOrigin[1],obbMatrix[14]-rayOrigin[2]};        
+        //const float scaling[3] = {meshId==TEAPOT_MESH_CAPSULE ? ((md->scaling[0]+md->scaling[2])*0.5) : md->scaling[0],md->scaling[1],meshId==TEAPOT_MESH_CAPSULE ? ((md->scaling[0]+md->scaling[2])*0.5) : md->scaling[2]};
         const float* scaling = md->scaling;
-        const tpoat aabbMin[3] = {TIS.aabbMin[md->meshId][0]*scaling[0],TIS.aabbMin[md->meshId][1]*scaling[1],TIS.aabbMin[md->meshId][2]*scaling[2]};
-        const tpoat aabbMax[3] = {TIS.aabbMax[md->meshId][0]*scaling[0],TIS.aabbMax[md->meshId][1]*scaling[1],TIS.aabbMax[md->meshId][2]*scaling[2]};
+        tpoat aabbMin[3] = {TIS.aabbMin[meshId][0]*scaling[0],TIS.aabbMin[meshId][1]*scaling[1],TIS.aabbMin[meshId][2]*scaling[2]};
+        tpoat aabbMax[3] = {TIS.aabbMax[meshId][0]*scaling[0],TIS.aabbMax[meshId][1]*scaling[1],TIS.aabbMax[meshId][2]*scaling[2]};
         //Teapot_Helper_Vector3Normalize(obbPosDelta);
         //for (j=0;j<3;j++) obbPosDelta[i]=-obbPosDelta[i];
 
-        // Warning: aabbMin and aabbMax are WRONG when md->mashId==TEAPOT_MESH_CAPSULE and a non-uniform scaling is applied.
-        // unluckily TEAPOT_MESH_CAPSULE is special... sorry!
-        // We should recalculate 'aabbMin' and 'aabbMax' based on 'scaling' and the definition 'TEAPOT_CENTER_MESHES_ON_FLOOR'.
-        // This is a hard work we're not going to perform ATM. Tip: implementation of 'Teapot_MeshData_HiLevel_DrawMulti_ShadowMap_Vp_Internal(...)' might help for this task.
-        //if (md->meshId==TEAPOT_MESH_CAPSULE) printf("TEAPOT_MESH_CAPSULE: aabbMin(%1.3f,%1.3f,%1.3f) aabbMax(%1.3f,%1.3f,%1.3f)\n",aabbMin[0],aabbMin[1],aabbMin[2],aabbMax[0],aabbMax[1],aabbMax[2]);
+        if (md->meshId==TEAPOT_MESH_CAPSULE) {
+            // Sorry, but capsules are special
+            const float sphereScaling = (md->scaling[0]+md->scaling[2])*0.5;
+#           ifndef TEAPOT_CENTER_MESHES_ON_FLOOR
+            // This seems to work:
+            aabbMin[1]+=0.5*(md->scaling[1]-2.0*sphereScaling);
+            aabbMax[1]-=0.5*(md->scaling[1]-2.0*sphereScaling);
+#           else //TEAPOT_CENTER_MESHES_ON_FLOOR
+            // This seems wrong:
+            aabbMax[1]-=0.5*(md->scaling[1]-2.0*sphereScaling);
+#           endif //TEAPOT_CENTER_MESHES_ON_FLOOR
+            //printf("TEAPOT_MESH_CAPSULE: aabbMin(%1.3f,%1.3f,%1.3f) aabbMax(%1.3f,%1.3f,%1.3f) md->scaling[1]=%1.3f sphereScaling=%1.3f TIS.halfExtents[TEAPOT_MESH_HALF_SPHERE_DOWN][1]=%1.3f\n",aabbMin[0],aabbMin[1],aabbMin[2],aabbMax[0],aabbMax[1],aabbMax[2],md->scaling[1],sphereScaling,TIS.halfExtents[TEAPOT_MESH_HALF_SPHERE_DOWN][1]);
+        }
 
         for (j=0;j<3;j++)   {
             if (!noCollisionDetected)   {

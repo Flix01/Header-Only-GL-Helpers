@@ -89,9 +89,9 @@ for glut.h, glew.h, etc. with something like:
 //#define DYNAMIC_RESOLUTION_USE_GLSL_VERSION_330       // (Optional) Not sure it's faster...
 //#define DYNAMIC_RESOLUTION_SHADOW_MAP_SIZE_FORCE_POT    // There are other definitions that affect the shadow map resolution. Please see dynamic_resolution.h.
 #if (!defined(__EMSCRIPTEN__) && !defined(DYNAMIC_RESOLUTION_SHADOW_USE_PCF))
-//#   define DYNAMIC_RESOLUTION_SHADOW_USE_PCF 4  // Optional [but expensive] Percentage Closing Filter Shadows (for this to work emscripten needs in the command-line: -s USE_WEBGL2=1 )
+//#   define DYNAMIC_RESOLUTION_SHADOW_USE_PCF 4    // Optional [but expensive] Percentage Closing Filter Shadows (for this to work emscripten needs in the command-line: -s USE_WEBGL2=1 )
 #endif //__EMSCRIPTEN__
-#define DYNAMIC_RESOLUTION_IMPLEMENTATION               // Mandatory in 1 source file (.c or .cpp)
+#define DYNAMIC_RESOLUTION_IMPLEMENTATION           // Mandatory in 1 source file (.c or .cpp)
 #include "dynamic_resolution.h"
 
 
@@ -388,11 +388,13 @@ void InitGL(void) {
 
         // (torus)
         md = pMeshData[i++];
+        Teapot_Helper_RotateMatrix(Teapot_Helper_IdentityMatrix(mMatrix),-30,1,0,0);    // Rotation test
         mMatrix[12]=0.3;    mMatrix[13]=0.0;    mMatrix[14]=0.5;
         Teapot_MeshData_SetMMatrix(md,mMatrix);
         Teapot_MeshData_SetScaling(md,1.f,1.5f,1.25f);
         Teapot_MeshData_SetColor(md,0.5f,0.75f,1.0f,0.65f);
         Teapot_MeshData_SetMeshId(md,TEAPOT_MESH_TORUS);
+        Teapot_Helper_IdentityMatrix(mMatrix);
 
         // (table)
         md = pMeshData[i++];
@@ -438,14 +440,17 @@ void InitGL(void) {
         Teapot_MeshData_SetMMatrix(md,mMatrix);
         Teapot_MeshData_SetMeshId(md,TEAPOT_MESH_TEAPOT);
 
-        // (capsule)
+        // (capsule) [They are special: SetScaling(...) does NOT scale the mesh, but builds a NEW capsule]
         md = pMeshData[i++];
-        Teapot_MeshData_SetScaling(md,0.25f,0.35f,0.25f);
+        Teapot_MeshData_SetScaling(md,0.25f,0.35f*4.f,0.25f);   // .x and .z MUST be the same!
         //Teapot_MeshData_SetScaling(md,1.f,1.f,1.f);
         Teapot_MeshData_SetColor(md,0.4f,0.8f,0.2f,1.0f);
+        Teapot_Helper_RotateMatrix(Teapot_Helper_IdentityMatrix(mMatrix),45,0,0,1); // Rotation test
         mMatrix[12]=0.75;   mMatrix[13]=0.0;    mMatrix[14]=-1.5;
         Teapot_MeshData_SetMMatrix(md,mMatrix);
         Teapot_MeshData_SetMeshId(md,TEAPOT_MESH_CAPSULE);
+        Teapot_Helper_IdentityMatrix(mMatrix);
+
 
         numMeshData = i;    // Well, we should check that numMeshData<maxNumMeshData
     }
@@ -571,8 +576,22 @@ void DrawGL(void)
         const Teapot_MeshData* md = pMouseSelectedMeshData; //pAnimatedMeshData0;
         static float aabb[3];
         Teapot_GetMeshAabbExtents(md->meshId,aabb);
+        if (md->meshId==TEAPOT_MESH_CAPSULE)    {
+            // Sorry, but capsules are special (Teapot_SetScaling(...) does not scale them, because we want the two half-spheres to be always regular)
+            const float sphereScaling = (md->scaling[0]+md->scaling[2])*0.5;
+#           ifndef TEAPOT_CENTER_MESHES_ON_FLOOR
+            // This seems to work:
+            aabb[1]*=md->scaling[1];aabb[1]-=1.0*(md->scaling[1]-sphereScaling);
+            Teapot_SetScaling(aabb[0]*sphereScaling,aabb[1],aabb[2]*sphereScaling);
+#           else //TEAPOT_CENTER_MESHES_ON_FLOOR
+            // This seems wrong:
+            aabb[1]*=md->scaling[1];aabb[1]-=1.0*(md->scaling[1]-sphereScaling);
+            Teapot_SetScaling(aabb[0]*sphereScaling,aabb[1],aabb[2]*sphereScaling);
+            // (also the selection code inside Teapot_MeshData_GetMeshUnderMouse(...) must be corrected accordingly)
+#           endif //TEAPOT_CENTER_MESHES_ON_FLOOR
+        }
+        else Teapot_SetScaling(aabb[0]*md->scaling[0],aabb[1]*md->scaling[1],aabb[2]*md->scaling[2]);
         Teapot_SetColor(0.4,0.4,0,1);
-        Teapot_SetScaling(aabb[0]*md->scaling[0],aabb[1]*md->scaling[1],aabb[2]*md->scaling[2]);
         glLineWidth(4.f);
         // Hp) We have already md->mvMatrix. We do have it, because we're calling Teapot_DrawMulti_Mv(...) below.
         // Otherwise, we can just call Teapot_Draw(md->mMatrix,TEAPOT_MESHLINES_CUBE_EDGES),
