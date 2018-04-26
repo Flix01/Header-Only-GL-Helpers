@@ -140,6 +140,9 @@ typedef enum {
     TEAPOT_MESH_USER_29,
     TEAPOT_MESH_CUBE,
     TEAPOT_MESH_CUBIC_GROUND,           // Top face is made by 5x5 vertices
+    TEAPOT_MESH_PLANE_X,
+    TEAPOT_MESH_PLANE_Y,
+    TEAPOT_MESH_PLANE_Z,
     TEAPOT_MESH_CYLINDER,
     TEAPOT_MESH_CONE1,
     TEAPOT_MESH_CONE2,                  // Better quality
@@ -2497,13 +2500,12 @@ void Teapot_Init(void) {
         glUseProgram(0);
     }
 
-    {
-        // numTotVerts = 1672 numTotInds = 9300
+    {        
 #       ifndef TEAPOT_MAX_NUM_MESH_VERTS
-#           define TEAPOT_MAX_NUM_MESH_VERTS  (2784)
+#           define TEAPOT_MAX_NUM_MESH_VERTS  (2796)
 #       endif //TEAPOT_MAX_NUM_MESH_VERTS
 #       ifndef TEAPOT_MAX_NUM_MESH_INDS
-#           define TEAPOT_MAX_NUM_MESH_INDS   (14112)
+#           define TEAPOT_MAX_NUM_MESH_INDS   (14148)
 #       endif //TEAPOT_MAX_NUM_MESH_INDS
 
 #       ifndef TEAPOT_MAX_NUM_USER_MESH_VERTICES
@@ -2519,6 +2521,11 @@ void Teapot_Init(void) {
         unsigned short totInds[TEAPOT_MAX_NUM_MESH_INDS+TEAPOT_MAX_NUM_USER_MESH_INDICES];
 
 
+#       ifdef TEAPOT_NO_MESH_PLANE_BACK_FACES
+#           define TEAPOT_NO_MESH_PLANE_X_BACK_FACE
+#           define TEAPOT_NO_MESH_PLANE_Y_BACK_FACE
+#           define TEAPOT_NO_MESH_PLANE_Z_BACK_FACE
+#       endif //TEAPOT_NO_MESH_PLANE_BACK_FACES
 
         int numTotVerts = 0;
         int numTotInds = 0;
@@ -3004,6 +3011,51 @@ void Teapot_Init(void) {
                         45,42,41,46,43,42,34,44,33,48,45,44,49,46,45,50,47,46,35,48,34,52,49,48,53,50,49,54,51,50,19,52,35,31,53,52,30,54,53,29,55,54,28,4,36,43,39,5,47,38,39,51,37,38,55,36,37,32,40,24,40,41,25,
                         41,42,26,42,43,27,33,44,40,44,45,41,45,46,42,46,47,43,34,48,44,48,49,45,49,50,46,50,51,47,35,52,48,52,53,49,53,54,50,54,55,51,19,31,52,31,30,53,30,29,54,29,28,55};
 
+                    AddMeshVertsAndInds(totVerts,TEAPOT_MAX_NUM_MESH_VERTS,&numTotVerts,6,totInds,TEAPOT_MAX_NUM_MESH_INDS,&numTotInds,verts,sizeof(verts)/(sizeof(verts[0])*3),inds,sizeof(inds)/sizeof(inds[0]),(TeapotMeshEnum)i);
+                }
+#               endif
+            }
+                break;
+            case TEAPOT_MESH_PLANE_X: {
+#               ifndef TEAPOT_MESH_PLANE_X
+                {
+                    const float A=0.5;const float verts[] = {0,-A,-A,0,-A,A,0,A,A,0,A,-A};
+                    const unsigned short inds[] = {
+                        3,2,0,2,1,0    // Front
+#                       ifdef TEAPOT_NO_MESH_PLANE_X_BACK_FACE
+                        ,0,1,2,2,3,0   // Back
+#                       endif //TEAPOT_NO_MESH_PLANE_X_BACK_FACE
+                    };
+                    AddMeshVertsAndInds(totVerts,TEAPOT_MAX_NUM_MESH_VERTS,&numTotVerts,6,totInds,TEAPOT_MAX_NUM_MESH_INDS,&numTotInds,verts,sizeof(verts)/(sizeof(verts[0])*3),inds,sizeof(inds)/sizeof(inds[0]),(TeapotMeshEnum)i);
+                }
+#               endif
+            }
+                break;
+            case TEAPOT_MESH_PLANE_Y: {
+#               ifndef TEAPOT_MESH_PLANE_Y
+                {
+                    const float A=0.5;const float verts[] = {-A,0,-A,   A,0,-A, A,0,A,  -A,0,A};
+                    const unsigned short inds[] = {
+                        3,2,0,2,1,0     // Front
+#                       ifdef TEAPOT_NO_MESH_PLANE_Y_BACK_FACE
+                        ,0,1,2,2,3,0    // Back
+#                       endif //TEAPOT_NO_MESH_PLANE_Y_BACK_FACE
+                    };
+                    AddMeshVertsAndInds(totVerts,TEAPOT_MAX_NUM_MESH_VERTS,&numTotVerts,6,totInds,TEAPOT_MAX_NUM_MESH_INDS,&numTotInds,verts,sizeof(verts)/(sizeof(verts[0])*3),inds,sizeof(inds)/sizeof(inds[0]),(TeapotMeshEnum)i);
+                }
+#               endif
+            }
+                break;
+            case TEAPOT_MESH_PLANE_Z: {
+#               ifndef TEAPOT_MESH_PLANE_Z
+                {
+                    const float A=0.5;const float verts[] = {-A,-A,0,A,-A,0,A,A,0,-A,A,0};
+                    const unsigned short inds[] = {
+                        0,1,2,2,3,0     // Front
+#                       ifdef TEAPOT_NO_MESH_PLANE_Z_BACK_FACE
+                        ,3,2,0,2,1,0    // Back
+#                       endif //TEAPOT_NO_MESH_PLANE_Z_BACK_FACE
+                    };
                     AddMeshVertsAndInds(totVerts,TEAPOT_MAX_NUM_MESH_VERTS,&numTotVerts,6,totInds,TEAPOT_MAX_NUM_MESH_INDS,&numTotInds,verts,sizeof(verts)/(sizeof(verts[0])*3),inds,sizeof(inds)/sizeof(inds[0]),(TeapotMeshEnum)i);
                 }
 #               endif
