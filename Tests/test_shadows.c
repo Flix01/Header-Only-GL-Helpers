@@ -211,7 +211,8 @@ float vMatrix[16];          // view matrix
 float cameraSpeed = 0.5f;   // When moving it
 
 // light data
-float lightDirection[3] = {1,2,1.5};// Will be normalized
+float lightYaw = M_PI*0.225f,lightPitch = M_PI*0.25f;   // Please edit them in resetLight() too
+float lightDirection[4] = {0,1,0,0};                    // Derived value (do not edit) [lightDirection[3]==0]
 
 // pMatrix data:
 float pMatrix[16];                  // projection matrix
@@ -574,23 +575,21 @@ void DrawGL(void)
     // We can add an aabb frame around any object (here we use mouse selection)
     if (pMouseSelectedMeshData) {
         const Teapot_MeshData* md = pMouseSelectedMeshData; //pAnimatedMeshData0;
-        static float aabb[3];
+        float scaling[3],aabb[3];
+
+        // Fill 'scaling':
         Teapot_GetMeshAabbExtents(md->meshId,aabb);
         if (md->meshId==TEAPOT_MESH_CAPSULE)    {
             // Sorry, but capsules are special (Teapot_SetScaling(...) does not scale them, because we want the two half-spheres to be always regular)
             const float sphereScaling = (md->scaling[0]+md->scaling[2])*0.5;
-#           ifndef TEAPOT_CENTER_MESHES_ON_FLOOR
-            // This seems to work:
+            scaling[0]=aabb[0]*sphereScaling;scaling[2]=aabb[2]*sphereScaling;
             aabb[1]*=md->scaling[1];aabb[1]-=1.0*(md->scaling[1]-sphereScaling);
-            Teapot_SetScaling(aabb[0]*sphereScaling,aabb[1],aabb[2]*sphereScaling);
-#           else //TEAPOT_CENTER_MESHES_ON_FLOOR
-            // This seems wrong:
-            aabb[1]*=md->scaling[1];aabb[1]-=1.0*(md->scaling[1]-sphereScaling);
-            Teapot_SetScaling(aabb[0]*sphereScaling,aabb[1],aabb[2]*sphereScaling);
-            // (also the selection code inside Teapot_MeshData_GetMeshUnderMouse(...) must be corrected accordingly)
-#           endif //TEAPOT_CENTER_MESHES_ON_FLOOR
+            scaling[1] = aabb[1];
         }
-        else Teapot_SetScaling(aabb[0]*md->scaling[0],aabb[1]*md->scaling[1],aabb[2]*md->scaling[2]);
+        else {int i;for (i=0;i<3;i++) scaling[i]=aabb[i]*md->scaling[i];}
+
+        // Apply scaling, set color and line width, and draw an AABB around the shape:
+        Teapot_SetScaling(scaling[0],scaling[1],scaling[2]);
         Teapot_SetColor(0.4,0.4,0,1);
         glLineWidth(4.f);
         // Hp) We have already md->mvMatrix. We do have it, because we're calling Teapot_DrawMulti_Mv(...) below.
@@ -598,6 +597,36 @@ void DrawGL(void)
         // Or better we can move this snippet below Teapot_DrawMulti(pMeshData,numMeshData,1),
         // because Teapot_DrawMulti(...) internally sets all the mvMatrices and then calls Teapot_DrawMulti_Mv(pMeshData,numMeshData,1).
         Teapot_Draw_Mv(md->mvMatrix,TEAPOT_MESHLINES_CUBE_EDGES);
+
+        // optional: add a camera-aligned label (just a TEAPOT_MESH_PLANE_Z) above the mesh
+        /*{
+            static float mMatrix[16];int i;
+            const float* vMatrixInv = Teapot_GetViewMatrixInverseConstReference();
+            const float offsetY =
+#           ifdef TEAPOT_CENTER_MESHES_ON_FLOOR
+                    scaling[1];
+#           else //TEAPOT_CENTER_MESHES_ON_FLOOR
+                    scaling[1]*0.6;
+#           endif //TEAPOT_CENTER_MESHES_ON_FLOOR
+            Teapot_Helper_CopyMatrix(mMatrix,md->mMatrix);
+
+            // label Y offset
+            for (i=0;i<3;i++) mMatrix[12+i]+=mMatrix[4+i]*offsetY;   // Shift offsetY along its own vertical orientation
+            mMatrix[13]+=0.125; // Shift a bit up more
+
+            // Adjust 3x3 submatrix
+            mMatrix[0]=vMatrixInv[0];  mMatrix[1]=vMatrixInv[1];  mMatrix[2]=vMatrixInv[2];
+            mMatrix[4]=0;  mMatrix[5]=1;  mMatrix[6]=0;
+            mMatrix[8]=vMatrixInv[8];  mMatrix[9]=vMatrixInv[9];  mMatrix[10]=vMatrixInv[10];
+
+            // These values should be better adjusted (they control the label size)
+            Teapot_SetScaling(1.0*(scaling[0]>scaling[2]?scaling[0]:scaling[2]),0.25*scaling[1],1.0);
+            Teapot_SetColor(1.0,1.0,1.0,1);
+
+            Teapot_LowLevel_StartDisablingLighting();
+            Teapot_Draw(mMatrix,TEAPOT_MESH_PLANE_Z);
+            Teapot_LowLevel_StopDisablingLighting();
+        }*/
     }
 
     // We can add a pivot at the camera target point
@@ -744,6 +773,16 @@ static void updateCameraPos() {
     cameraPos[2] = targetPos[2] + cos(cameraYaw)*distanceXZ;
 }
 
+static void updateDirectionalLight() {
+    const float distanceY = sin(lightPitch);
+    const float distanceXZ = cos(lightPitch);
+    lightDirection[0] = sin(lightYaw)*distanceXZ;
+    lightDirection[1] = distanceY;
+    lightDirection[2] = cos(lightYaw)*distanceXZ;
+    Teapot_Helper_Vector3Normalize(lightDirection);
+    lightDirection[3]=0.f;
+}
+
 static void resetCamera() {
     // You can set the initial camera position here through:
     targetPos[0]=0; targetPos[1]=0; targetPos[2]=0; // The camera target point
@@ -754,10 +793,16 @@ static void resetCamera() {
     updateCameraPos();
 }
 
+static void resetLight() {
+    lightYaw = M_PI*0.225f;
+    lightPitch = M_PI*0.25f;
+    updateDirectionalLight();
+}
+
 void GlutSpecialKeys(int key,int x,int y)
 {
     const int mod = glutGetModifiers();
-    if (!(mod&GLUT_ACTIVE_CTRL))	{
+    if (!(mod&GLUT_ACTIVE_CTRL) && !(mod&GLUT_ACTIVE_SHIFT))	{
         switch (key) {
         case GLUT_KEY_LEFT:
         case GLUT_KEY_RIGHT:
@@ -834,6 +879,30 @@ void GlutSpecialKeys(int key,int x,int y)
             else if (targetPos[1]>500.f) targetPos[1]=500.f;
             updateCameraPos();
         break;
+        }
+    }
+    else if (mod&GLUT_ACTIVE_SHIFT)	{
+        switch (key) {
+        case GLUT_KEY_LEFT:
+        case GLUT_KEY_RIGHT:
+            lightYaw+= instantFrameTime*cameraSpeed*(key==GLUT_KEY_LEFT ? -4.0f : 4.0f);
+            if (lightYaw>M_PI) lightYaw-=2*M_PI;
+            else if (lightYaw<=-M_PI) lightYaw+=2*M_PI;
+            updateDirectionalLight();
+            break;
+        case GLUT_KEY_UP:
+        case GLUT_KEY_DOWN:
+        case GLUT_KEY_PAGE_UP:
+        case GLUT_KEY_PAGE_DOWN:
+            lightPitch+= instantFrameTime*cameraSpeed*( (key==GLUT_KEY_UP || key==GLUT_KEY_PAGE_UP) ? 2.f : -2.f);
+            if (lightPitch>M_PI-0.001f) lightPitch=M_PI-0.001f;
+            else if (lightPitch<-M_PI*0.05f) lightPitch=-M_PI*0.05f;
+            updateDirectionalLight();
+            break;
+        case GLUT_KEY_HOME:
+            // Reset the light
+            resetLight();
+            break;
         }
     }
 }
@@ -950,6 +1019,7 @@ int main(int argc, char** argv)
     printf("\nKEYS:\n");
     printf("AROW KEYS + PAGE_UP/PAGE_DOWN:\tmove camera (optionally with CTRL down)\n");
     printf("HOME KEY:\t\t\treset camera\n");
+    printf("ARROW KEYS + SHIFT:\tmove directional light\n");
     printf("F1:\t\t\ttoggle dynamic resolution on/off\n");
 #	ifndef __EMSCRIPTEN__
     printf("CTRL+RETURN:\t\ttoggle fullscreen on/off\n");
@@ -958,6 +1028,7 @@ int main(int argc, char** argv)
     printf("\n");
 
     resetCamera();  // Mandatory
+    resetLight();   // Mandatory
 
     glutMainLoop();
 

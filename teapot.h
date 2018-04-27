@@ -1300,11 +1300,9 @@ Teapot_MeshData* Teapot_MeshData_GetMeshUnderMouse(Teapot_MeshData* const* meshe
             // Sorry, but capsules are special
             const float sphereScaling = (md->scaling[0]+md->scaling[2])*0.5;
 #           ifndef TEAPOT_CENTER_MESHES_ON_FLOOR
-            // This seems to work:
             aabbMin[1]+=0.5*(md->scaling[1]-2.0*sphereScaling);
             aabbMax[1]-=0.5*(md->scaling[1]-2.0*sphereScaling);
 #           else //TEAPOT_CENTER_MESHES_ON_FLOOR
-            // This seems wrong:
             aabbMax[1]-=0.5*(md->scaling[1]-2.0*sphereScaling);
 #           endif //TEAPOT_CENTER_MESHES_ON_FLOOR
             //printf("TEAPOT_MESH_CAPSULE: aabbMin(%1.3f,%1.3f,%1.3f) aabbMax(%1.3f,%1.3f,%1.3f) md->scaling[1]=%1.3f sphereScaling=%1.3f TIS.halfExtents[TEAPOT_MESH_HALF_SPHERE_DOWN][1]=%1.3f\n",aabbMin[0],aabbMin[1],aabbMin[2],aabbMax[0],aabbMax[1],aabbMax[2],md->scaling[1],sphereScaling,TIS.halfExtents[TEAPOT_MESH_HALF_SPHERE_DOWN][1]);
@@ -1531,9 +1529,9 @@ void Teapot_Draw_Mv(const tpoat mvMatrix[16], TeapotMeshEnum meshId)    {
         const tpoat diameter = (TIS.scaling[0]+TIS.scaling[2])*0.5f;
         const float pushScaling[3] = {TIS.scaling[0],TIS.scaling[1],TIS.scaling[2]};
         const tpoat yAxis[3] = {mvMatrix[4],mvMatrix[5],mvMatrix[6]};
-        const tpoat centerY = -TIS.centerPoint[TEAPOT_MESH_CYLINDER_LATERAL_SURFACE][1];    //
-        const tpoat origin[3] = {mvMatrix[12],mvMatrix[13]-diameter*centerY,mvMatrix[14]};
-        tpoat tmp;
+        const tpoat centerY = -TIS.centerPoint[TEAPOT_MESH_CYLINDER_LATERAL_SURFACE][1];
+        tpoat tmp = diameter*centerY;
+        const tpoat origin[3] = {mvMatrix[12]-mvMatrix[4]*tmp,mvMatrix[13]-mvMatrix[5]*tmp,mvMatrix[14]-mvMatrix[6]*tmp};
         tpoat mat[16];Teapot_Helper_CopyMatrix(mat,mvMatrix);
         mat[12] = origin[0];    mat[13] = origin[1];    mat[14] = origin[2];
 
@@ -1564,10 +1562,7 @@ void Teapot_Draw_Mv(const tpoat mvMatrix[16], TeapotMeshEnum meshId)    {
     }
 
 #   ifdef TEAPOT_ENABLE_FRUSTUM_CULLING
-    if ((meshId<TEAPOT_MESH_TEXT_X || meshId>TEAPOT_MESH_TEXT_Z)
-        && meshId!=TEAPOT_MESH_CYLINDER_LATERAL_SURFACE   // Frustum culling doesn't work on this (to fix)
-        )
-        {
+    if (meshId<TEAPOT_MESH_TEXT_X || meshId>TEAPOT_MESH_TEXT_Z) {
         const float scaling[3] = {TIS.scaling[0],TIS.scaling[1],TIS.scaling[2]};
         const float aabbMin[3] = {TIS.aabbMin[meshId][0]*scaling[0],TIS.aabbMin[meshId][1]*scaling[1],TIS.aabbMin[meshId][2]*scaling[2]};
         const float aabbMax[3] = {TIS.aabbMax[meshId][0]*scaling[0],TIS.aabbMax[meshId][1]*scaling[1],TIS.aabbMax[meshId][2]*scaling[2]};
@@ -2354,11 +2349,12 @@ static void Teapot_MeshData_HiLevel_DrawMulti_ShadowMap_Vp_Internal(Teapot_MeshD
                 const float height = md->scaling[1];
                 const float diameter = (md->scaling[0]+md->scaling[2])*0.5f;
                 const float yAxis[3] = {md->mMatrix[4],md->mMatrix[5],md->mMatrix[6]};
-                float tmp;tpoat mat[16];
-                tpoat origin[3] = {md->mMatrix[12],md->mMatrix[13],md->mMatrix[14]};
+                tpoat mat[16];
                 float center[3];Teapot_GetMeshAabbCenter(TEAPOT_MESH_CYLINDER_LATERAL_SURFACE,center);
+                float tmp = (diameter*center[1]);
+                tpoat origin[3] = {md->mMatrix[12]+md->mMatrix[4]*tmp,md->mMatrix[13]-md->mMatrix[5]*tmp,md->mMatrix[14]-md->mMatrix[6]*tmp};
                 center[1]=-center[1];   //
-                origin[1]-=diameter*center[1];
+                //origin[1]-=diameter*center[1];
 
                 memcpy(mat,md->mMatrix,sizeof(mat));
                 mat[12] = origin[0];    mat[13] = origin[1];    mat[14] = origin[2];
@@ -3223,6 +3219,8 @@ void Teapot_Init(void) {
                     for (j=0;j<3;j++) {
                         TIS.halfExtents[i][j] = TIS.halfExtents[TEAPOT_MESH_CYLINDER][j];
                         TIS.centerPoint[i][j] = TIS.centerPoint[TEAPOT_MESH_CYLINDER][j];
+                        TIS.aabbMin[i][j] = TIS.aabbMin[TEAPOT_MESH_CYLINDER][j];
+                        TIS.aabbMax[i][j] = TIS.aabbMax[TEAPOT_MESH_CYLINDER][j];
                     }
                 }
 #               endif
