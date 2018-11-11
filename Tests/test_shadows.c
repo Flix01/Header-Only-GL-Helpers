@@ -72,6 +72,7 @@ for glut.h, glew.h, etc. with something like:
 #	define GL_GLEXT_PROTOTYPES
 #endif //USE_GLEW
 
+
 #include GLUT_PATH
 #ifdef __FREEGLUT_STD_H__
 #   ifndef __EMSCRIPTEN__

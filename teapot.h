@@ -76,7 +76,7 @@ extern "C" {
 #endif //TEAPOT_USE_DOUBLE_PRECISION
 
 #ifndef TEAPOT_MATRIX_USE_DOUBLE_PRECISION
-typedef float  tpoat;       // short form of tEApOT_FLoat
+typedef float  tpoat;       /* short form of tEApOT_FLoat */
 #else
 typedef double tpoat;
 #undef TEAPOT_USE_DOUBLE_PRECISION
@@ -658,7 +658,7 @@ static const char* TeapotFS[] = {
     "#define shadow2D texture\n"
     "#define gl_FragColor FragColor\n"
 #   endif //__EMSCRIPTEN__ && TEAPOT_SHADER_USE_SHADOW_MAP && TEAPOT_SHADER_SHADOW_MAP_PCF
-    "#define TABSSQRT "XSTR_MACRO(TEAPOT_SHADER_SHADOW_MAP_PCF)"\n"
+    "#define TABSSQRT " XSTR_MACRO(TEAPOT_SHADER_SHADOW_MAP_PCF) "\n"
     "#ifdef GL_ES\n"
     "precision mediump float;\n"
     "precision lowp int;\n"
@@ -1057,12 +1057,12 @@ void Teapot_Helper_GetLightViewProjectionMatrixExtra(tpoat* __restrict lvpMatrix
     tpoat frustumCenter[3] = {0,0,0};tpoat radius = 0;
     tpoat lpMatrix[16],lvMatrix[16],lvpMatrixFallback[16];
     int i;
-    if (lvpMatrixOut16==0) lvpMatrixOut16=lvpMatrixFallback;    // AFAIK from the caller point of view it's still lvpMatrixOut16==0, isn't it?
 
     // Get frustumCenter and radius
     tpoat frustumCenterDistance;
     tpoat tanFovDiagonalSquared = tan(cameraFovyDeg*3.14159265358979323846/360.0); // 0.5*M_PI/180.0
     const tpoat halfNearFarClippingPlane = 0.5*(cameraFarClippingPlane+cameraNearClippingPlane);
+    if (lvpMatrixOut16==0) lvpMatrixOut16=lvpMatrixFallback;    // AFAIK from the caller point of view it's still lvpMatrixOut16==0, isn't it?
     tanFovDiagonalSquared*=tanFovDiagonalSquared;
     tanFovDiagonalSquared*=(1.0+cameraAspectRatio*cameraAspectRatio);
     frustumCenterDistance = halfNearFarClippingPlane*(1.0+tanFovDiagonalSquared);
@@ -2384,9 +2384,14 @@ static void Teapot_MeshData_HiLevel_DrawMulti_ShadowMap_Vp_Internal(Teapot_MeshD
                 const float diameter = (md->scaling[0]+md->scaling[2])*0.5f;
                 const float yAxis[3] = {md->mMatrix[4],md->mMatrix[5],md->mMatrix[6]};
                 tpoat mat[16];
-                float center[3];Teapot_GetMeshAabbCenter(TEAPOT_MESH_CYLINDER_LATERAL_SURFACE,center);
-                float tmp = (diameter*center[1]);
-                tpoat origin[3] = {md->mMatrix[12]+md->mMatrix[4]*tmp,md->mMatrix[13]-md->mMatrix[5]*tmp,md->mMatrix[14]-md->mMatrix[6]*tmp};
+                float tmp,center[3],origin[3];				
+				Teapot_GetMeshAabbCenter(TEAPOT_MESH_CYLINDER_LATERAL_SURFACE,center);                
+				tmp = (diameter*center[1]);
+
+                origin[0] = md->mMatrix[12]+md->mMatrix[4]*tmp;
+				origin[1] = md->mMatrix[13]-md->mMatrix[5]*tmp;
+				origin[2] = md->mMatrix[14]-md->mMatrix[6]*tmp;
+
                 center[1]=-center[1];   //
                 //origin[1]-=diameter*center[1];
 

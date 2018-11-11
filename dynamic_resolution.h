@@ -445,13 +445,13 @@ static const char* RenderTarget_Helper_GetFramebufferStatusString(GLenum status)
 }
 
 static void RenderTarget_Init(RenderTarget* rt,int width, int height) {
-    int i;
+    int i;GLenum filter,shadow_filter;        		
     //glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     if (rt->screenQuadProgramId) {
-        rt->width = width;
+		rt->width = width;
         rt->height = height;
 
-        GLenum filter = GL_LINEAR;
+        filter = GL_LINEAR;
 #       ifdef  DYNAMIC_RESOLUTION_USE_NEAREST_TEXTURE_FILTER
         filter = GL_NEAREST;
 #       endif //DYNAMIC_RESOLUTION_USE_NEAREST_TEXTURE_FILTER
@@ -515,13 +515,14 @@ static void RenderTarget_Init(RenderTarget* rt,int width, int height) {
         // Debug:
         //fprintf(stderr,"screen={%d,%d}\tscreenMaxDimMultiplied=%d\trt->shadow_texture_size=%d\n",width,height,(int)((width>height ? width : height)*DYNAMIC_RESOLUTION_SHADOW_MAP_SIZE_MULTIPLIER),rt->shadow_texture_size);
 
-        GLenum shadow_filter = GL_LINEAR;
+        shadow_filter = GL_LINEAR;
 #       ifdef  DYNAMIC_RESOLUTION_SHADOW_USE_NEAREST_TEXTURE_FILTER
         shadow_filter = GL_NEAREST;
 #       endif //DYNAMIC_RESOLUTION_SHADOW_USE_NEAREST_TEXTURE_FILTER
 
         for (i=0;i<DYNAMIC_RESOLUTION_NUM_RENDER_TARGETS;i++)	{
-            rt->shadow_resolution_factor[i] = 1;
+			GLenum clampMode;            
+			rt->shadow_resolution_factor[i] = 1;
 
             glBindTexture(GL_TEXTURE_2D, rt->shadow_texture[i]);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, shadow_filter);
@@ -535,9 +536,9 @@ static void RenderTarget_Init(RenderTarget* rt,int width, int height) {
 
             // Clamp mode
 #           ifdef __EMSCRIPTEN__
-            const GLenum clampMode = GL_CLAMP_TO_EDGE;  // Unluckily WebGL does not support GL_CLAMP or GL_CLAMP_TO_BORDER
+            clampMode = GL_CLAMP_TO_EDGE;  // Unluckily WebGL does not support GL_CLAMP or GL_CLAMP_TO_BORDER
 #           else //__EMSCRIPTEN__
-            const GLenum clampMode = //GL_CLAMP;    // sampling outside of the shadow map gives always shadowed pixels
+            clampMode = //GL_CLAMP;    // sampling outside of the shadow map gives always shadowed pixels
                    // GL_CLAMP_TO_EDGE;             // sampling outside of the shadow map can give shadowed or unshadowed pixels (it depends on the edge of the shadow map)
                     GL_CLAMP_TO_BORDER;             // sampling outside of the shadow map gives always non-shadowed pixels (if we set the border color correctly)
             if (clampMode==GL_CLAMP_TO_BORDER)  {

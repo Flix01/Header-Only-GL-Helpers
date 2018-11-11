@@ -309,6 +309,7 @@ SDFAnimationMode SdfTextChunkGetAnimationMode(const struct SdfTextChunk* chunk);
 
 #include <stdio.h>  // FILE* used in SdfCharset::GetFileContent(...)
 #include <ctype.h> // tolower
+#include <stdint.h>	// uint8_t
 
 #ifndef SDF_ASSERT
 #include <assert.h>
