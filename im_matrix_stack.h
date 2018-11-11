@@ -153,7 +153,7 @@ const imoat *imPopMatrix(void);
 
 const imoat *imuLookAt(imoat eyeX,imoat eyeY,imoat eyeZ,imoat centerX,imoat centerY,imoat centerZ,imoat upX,imoat upY,imoat upZ);
 const imoat* imuLookAtYX(imoat* __restrict  cameraMatrixInOut,imoat centerX,imoat centerY,imoat centerZ,imoat minDistanceToCenterAllowed,imoat maxDistanceToCenterAllowed,int invert_xz_axis); // Keeps the camera matrix (with no scaling applied) at position (m[12],m[13],m[14]), when possible, modifies the 3x3 rotation part, converts it into a vMatrix and then returns glMultMatrix(vMatrix);
-const imoat *imimLoadCameraMatrix(const imoat* __restrict cameraMatrix); // converts a camera matrix (with no scaling applied) into a vMatrix and then returns glLoadMatrix(vMatrix);
+const imoat *imLoadCameraMatrix(const imoat* __restrict cameraMatrix); // converts a camera matrix (with no scaling applied) into a vMatrix and then returns glLoadMatrix(vMatrix);
 const imoat *imFrustum(imoat left,imoat right, imoat bottom, imoat top,imoat zNear, imoat zFar);
 const imoat *imuPerspective(imoat fovy,imoat aspect, imoat zNear, imoat zFar);
 const imoat *imuOrtho2D(imoat left,imoat right, imoat bottom, imoat top);
@@ -421,7 +421,7 @@ inline const imoat *glPopMatrix(void) {return imPopMatrix();}
 
 inline const imoat *gluLookAt(imoat eyeX,imoat eyeY,imoat eyeZ,imoat centerX,imoat centerY,imoat centerZ,imoat upX,imoat upY,imoat upZ) {return imuLookAt(eyeX,eyeY,eyeZ,centerX,centerY,centerZ,upX,upY,upZ);}
 inline const imoat *gluLookAtYX(imoat* __restrict  cameraMatrixInOut,imoat centerX,imoat centerY,imoat centerZ,imoat minDistanceToCenterAllowed,imoat maxDistanceToCenterAllowed,int invert_xz_axis) {return imuLookAtYX(cameraMatrixInOut,centerX,centerY,centerZ,minDistanceToCenterAllowed,maxDistanceToCenterAllowed,invert_xz_axis);}
-inline const imoat *glimLoadCameraMatrix(const imoat* __restrict cameraMatrix16) {return imimLoadCameraMatrix(cameraMatrix16);}
+inline const imoat *glimLoadCameraMatrix(const imoat* __restrict cameraMatrix16) {return imLoadCameraMatrix(cameraMatrix16);}
 inline const imoat *glFrustum(imoat left,imoat right, imoat bottom, imoat top,imoat zNear, imoat zFar) {return imFrustum(left,right,bottom,top,zNear,zFar);}
 inline const imoat *gluPerspective(imoat fovy,imoat aspect, imoat zNear, imoat zFar) {return imuPerspective(fovy,aspect,zNear,zFar);}
 inline const imoat *gluOrtho2D(imoat left,imoat right, imoat bottom, imoat top) {return imuOrtho2D(left,right,bottom,top);}
@@ -1354,7 +1354,7 @@ const imoat* imuLookAtYX(imoat* __restrict cameraMatrix16InOut,imoat centerX,imo
     if (!invert_xz_axis) IMMatrixInvertXZAxisInPlace(m);  // Undo previous axis inversion
     return imMultMatrix(vMatrix);
 }
-const imoat *imimLoadCameraMatrix(const imoat* __restrict cameraMatrix16) {
+const imoat *imLoadCameraMatrix(const imoat* __restrict cameraMatrix16) {
     imoat* m = (imoat*) cameraMatrix16;
     imoat* mi = &IMMS.matrixStacks[IMMS.matrixMode][IMMS.matrixStackIndices[IMMS.matrixMode]][0];
     IMMatrixInvertXZAxisInPlace(m);  // This is necessary to invert the camera convention so that we can use for all objects (camera included): +X = left, +Y = up, +Z = forward

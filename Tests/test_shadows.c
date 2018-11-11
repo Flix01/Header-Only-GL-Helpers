@@ -27,7 +27,7 @@
 // HOW TO COMPILE:
 /*
 // LINUX:
-gcc -O2 -std=gnu89 test_shadows.c -o test_shadows -I"../" -lglut -lGL -lX11 -lm
+gcc -O3 -std=gnu89 -DNDEBUG -no-pie test_shadows.c -o test_shadows -I"../" -lglut -lGL -lX11 -lm
 // WINDOWS (here we use the static version of glew, and glut32.lib, that can be replaced by freeglut.lib):
 cl /O2 /MT /Tc test_shadows.c /D"TEAPOT_NO_RESTRICT" /D"DYNAMIC_RESOLUTION_NO_RESTRICT" /D"GLEW_STATIC" /I"../" /link /out:test_shadows.exe glut32.lib glew32s.lib opengl32.lib gdi32.lib Shell32.lib comdlg32.lib user32.lib kernel32.lib
 // EMSCRIPTEN:

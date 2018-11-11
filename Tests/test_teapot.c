@@ -27,7 +27,7 @@
 // HOW TO COMPILE:
 /*
 // LINUX:
-gcc -O2 -std=gnu89 test_teapot.c -o test_teapot -I"../" -lglut -lGL -lX11 -lm
+gcc -O2 -std=gnu89 -no-pie test_teapot.c -o test_teapot -I"../" -lglut -lGL -lX11 -lm
 // WINDOWS (here we use the static version of glew, and glut32.lib, that can be replaced by freeglut.lib):
 cl /O2 /MT /Tc test_teapot.c /D"TEAPOT_NO_RESTRICT" /D"GLEW_STATIC" /I"../" /link /out:test_teapot.exe glut32.lib glew32s.lib opengl32.lib gdi32.lib Shell32.lib comdlg32.lib user32.lib kernel32.lib
 // EMSCRIPTEN:

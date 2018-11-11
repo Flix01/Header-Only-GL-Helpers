@@ -46,6 +46,8 @@
 //
 //#define TEAPOT_USE_OPENMP                 // (experimental) ATM is only used in Teapot_MeshData_CalculateMvMatrixFromArray(...) and never tested => one more dependency and no gain: DO NOT USE!
 //
+//#define TEAPOT_USE_SIMD					// (experimental) speeds up Teapot_Helper_MultMatrix(...) using SIMD (about 1.5x-2x when compiled with -O3 -DNDEBUG -march=native), Requires -msse (OR -mavx when using double precision).
+//
 //#define TEAPOT_MESHDATA_HAS_MMATRIX_PTR   // (untested) handy when using Teapot_MeshData + some kind of physic engine that already stores a mMatrix16 somewhere.
 
 #ifndef TEAPOT_H_
@@ -57,7 +59,7 @@ extern "C" {
 #endif
 
 #ifndef TEAPOT_VERSION
-#   define TEAPOT_VERSION 1.0
+#   define TEAPOT_VERSION 1.1
 #endif //TEAPOT_VERSION
 
 
@@ -68,12 +70,33 @@ extern "C" {
 #   endif
 #endif //TEAPOT_NO_RESTRICT
 
+#ifdef TEAPOT_USE_DOUBLE_PRECISION	// from version TEAPOT_VERSION 1.1: TEAPOT_MATRIX_USE_DOUBLE_PRECISION and  TEAPOT_USE_DOUBLE_PRECISION are the same
+#undef TEAPOT_MATRIX_USE_DOUBLE_PRECISION
+#define TEAPOT_MATRIX_USE_DOUBLE_PRECISION
+#endif //TEAPOT_USE_DOUBLE_PRECISION
 
 #ifndef TEAPOT_MATRIX_USE_DOUBLE_PRECISION
 typedef float  tpoat;       // short form of tEApOT_FLoat
 #else
 typedef double tpoat;
+#undef TEAPOT_USE_DOUBLE_PRECISION
+#define TEAPOT_USE_DOUBLE_PRECISION
 #endif
+
+#ifdef TEAPOT_USE_SIMD
+#if (!defined(__SSE__) && (defined(_MSC_VER) && defined(_M_IX86_FP) && _M_IX86_FP>0))
+#define __SSE__		// _MSC_VER does not always define it... (but it always defines __AVX__)
+#endif // __SSE__
+#ifndef TEAPOT_MATRIX_USE_DOUBLE_PRECISION
+#ifdef __SSE__
+#include <xmmintrin.h>	// SSE
+#endif //__SSE__
+#else // TEAPOT_MATRIX_USE_DOUBLE_PRECISION
+#ifdef __AVX__
+#include <immintrin.h>	// AVX (and everything)
+#endif //__AVX__
+#endif // TEAPOT_MATRIX_USE_DOUBLE_PRECISION
+#endif //TEAPOT_USE_SIMD
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -297,62 +320,73 @@ static __inline tpoat* Teapot_Helper_IdentityMatrix(tpoat* __restrict result16) 
 static __inline void Teapot_Helper_CopyMatrix(tpoat* __restrict dst16,const tpoat* __restrict src16) {
     int i;for (i=0;i<16;i++) dst16[i]=src16[i];
 }
+static __inline tpoat* Teapot_Helper_MultMatrixUncheckArgs(tpoat* __restrict result16,const tpoat* __restrict ml16,const tpoat* __restrict mr16) {	
+	int i,i4;   
+#	if (defined(TEAPOT_USE_SIMD) && !defined(TEAPOT_MATRIX_USE_DOUBLE_PRECISION) && defined(__SSE__))
+    __m128 row1 = _mm_loadu_ps(&ml16[0]);
+    __m128 row2 = _mm_loadu_ps(&ml16[4]);
+    __m128 row3 = _mm_loadu_ps(&ml16[8]);
+    __m128 row4 = _mm_loadu_ps(&ml16[12]);
+    for(i=0; i<4; i++) {
+		i4 = 4*i;
+        __m128 brod1 = _mm_set1_ps(mr16[i4]);
+        __m128 brod2 = _mm_set1_ps(mr16[i4 + 1]);
+        __m128 brod3 = _mm_set1_ps(mr16[i4 + 2]);
+        __m128 brod4 = _mm_set1_ps(mr16[i4 + 3]);
+        __m128 row = _mm_add_ps(
+                    _mm_add_ps(
+                        _mm_mul_ps(brod1, row1),
+                        _mm_mul_ps(brod2, row2)),
+                    _mm_add_ps(
+                        _mm_mul_ps(brod3, row3),
+                        _mm_mul_ps(brod4, row4)));
+        _mm_storeu_ps(&result16[i4], row);
+	}
+#	elif (defined(TEAPOT_USE_SIMD) && defined(TEAPOT_MATRIX_USE_DOUBLE_PRECISION) && defined(__AVX__))
+	__m256d row1 = _mm256_loadu_pd(&ml16[0]);
+    __m256d row2 = _mm256_loadu_pd(&ml16[4]);
+    __m256d row3 = _mm256_loadu_pd(&ml16[8]);
+    __m256d row4 = _mm256_loadu_pd(&ml16[12]);
+    for(i=0; i<4; i++) {
+		i4 = 4*i;
+        __m256d brod1 = _mm256_set1_pd(mr16[i4]);
+        __m256d brod2 = _mm256_set1_pd(mr16[i4 + 1]);
+        __m256d brod3 = _mm256_set1_pd(mr16[i4 + 2]);
+        __m256d brod4 = _mm256_set1_pd(mr16[i4 + 3]);
+        __m256d row = _mm256_add_pd(
+                    _mm256_add_pd(
+                        _mm256_mul_pd(brod1, row1),
+                        _mm256_mul_pd(brod2, row2)),
+                    _mm256_add_pd(
+                        _mm256_mul_pd(brod3, row3),
+                        _mm256_mul_pd(brod4, row4)));
+        _mm256_storeu_pd(&result16[i4], row);
+	}
+#	else //MOL_USE_DOUBLE_PRECISION
+	/* reference implementation */	
+	tpoat mri4plus0,mri4plus1,mri4plus2,mri4plus3;
+	for(i = 0; i < 4; i++) {
+        i4=4*i;mri4plus0=mr16[i4];mri4plus1=mr16[i4+1];mri4plus2=mr16[i4+2];mri4plus3=mr16[i4+3];
+		result16[  i4] = ml16[0]*mri4plus0 + ml16[4]*mri4plus1 + ml16[ 8]*mri4plus2 + ml16[12]*mri4plus3;
+		result16[1+i4] = ml16[1]*mri4plus0 + ml16[5]*mri4plus1 + ml16[ 9]*mri4plus2 + ml16[13]*mri4plus3;
+		result16[2+i4] = ml16[2]*mri4plus0 + ml16[6]*mri4plus1 + ml16[10]*mri4plus2 + ml16[14]*mri4plus3;
+		result16[3+i4] = ml16[3]*mri4plus0 + ml16[7]*mri4plus1 + ml16[11]*mri4plus2 + ml16[15]*mri4plus3;
+    }	
+#	endif //MOL_USE_DOUBLE_PRECISION
+	return result16;
+}
 static __inline tpoat* Teapot_Helper_MultMatrix(tpoat* __restrict result16,const tpoat* __restrict ml16,const tpoat* __restrict mr16) {
-    int i,j,j4;
     if (result16==ml16) {
         tpoat ML16[16];Teapot_Helper_CopyMatrix(ML16,ml16);
-        Teapot_Helper_MultMatrix(result16,ML16,mr16);
-        return result16;
+        return Teapot_Helper_MultMatrixUncheckArgs(result16,ML16,mr16);
     }
     else if (result16==mr16) {
         tpoat MR16[16];Teapot_Helper_CopyMatrix(MR16,mr16);
-        Teapot_Helper_MultMatrix(result16,ml16,MR16);
-        return result16;
+        return Teapot_Helper_MultMatrixUncheckArgs(result16,ml16,MR16);
     }
-    for(i = 0; i < 4; i++) {
-        for(j = 0; j < 4; j++) {
-            j4 = 4*j;
-            result16[i+j4] =
-                ml16[i]    * mr16[0+j4] +
-                ml16[i+4]  * mr16[1+j4] +
-                ml16[i+8]  * mr16[2+j4] +
-                ml16[i+12] * mr16[3+j4];
-        }
-    }
-    return result16;
-/*
-// Auto vectorization Tests
-typedef struct MYV {tpoat v[4][4];} MYV;
-MYV* result = (MYV*) result16;
-MYV* A = (MYV*) ml16;
-MYV* B = (MYV*) mr16;
-
- for (i = 0; i < 4; ++i) {
-    for (j = 0; j < 4; ++j) {
-        tpoat tmp = 0;
-        for (int k = 0; k < 4; ++k) {
-            tmp += A.v[i][k] * B.v[k][j];
-        }
-        result.v[i][j] = tmp;
-    }
+    return Teapot_Helper_MultMatrixUncheckArgs(result16,ml16,mr16);
 }
-// m1 = N x M matrix, m2 = M x P matrix, m3 = N x P matrix & output
-void mmul(double **m1, double **m2, double **m3, int N, int M, int P)
-{
-    for (i = 0; i < N; i++)
-        for (j = 0; j < P; j++)
-        {
-            double tmp = 0.0;
 
-            for (k = 0; k < M; k++)
-                tmp += m1[i][k] * m2[k][j];
-
-            tmp = m3[i][j];
-        }
-    return m3;
-}
-*/
-}
 void Teapot_Helper_LookAt(tpoat* __restrict mOut16,tpoat eyeX,tpoat eyeY,tpoat eyeZ,tpoat centerX,tpoat centerY,tpoat centerZ,tpoat upX,tpoat upY,tpoat upZ);
 void Teapot_Helper_Perspective(tpoat* __restrict mOut16,tpoat degfovy,tpoat aspect, tpoat zNear, tpoat zFar);
 void Teapot_Helper_Ortho(tpoat* __restrict mOut16,tpoat left,tpoat right, tpoat bottom, tpoat top,tpoat nearVal,tpoat farVal);
@@ -1953,7 +1987,7 @@ void Teapot_MeshData_SetMvMatrix(Teapot_MeshData* md, const tpoat* mvMatrix16) {
 #ifndef TEAPOT_MESHDATA_HAS_MMATRIX_PTR
 void Teapot_MeshData_SetMMatrix(Teapot_MeshData* md, const tpoat* mMatrix16) {Teapot_Helper_CopyMatrix(md->mMatrix,mMatrix16);}
 #endif //TEAPOT_MESHDATA_HAS_MMATRIX_PTR
-void Teapot_MeshData_CalculateMvMatrix(Teapot_MeshData* md) {Teapot_Helper_MultMatrix(md->mvMatrix,TIS.vMatrix,md->mMatrix);}
+void Teapot_MeshData_CalculateMvMatrix(Teapot_MeshData* md) {Teapot_Helper_MultMatrixUncheckArgs(md->mvMatrix,TIS.vMatrix,md->mMatrix);}
 
 #ifndef TEAPOT_USE_OPENMP
 void Teapot_MeshData_CalculateMvMatrixFromArray(Teapot_MeshData** meshes,int numMeshes) {int i;if (!meshes || numMeshes<=0) return;for (i=0;i<numMeshes;i++) Teapot_MeshData_CalculateMvMatrix(meshes[i]);}
