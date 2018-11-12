@@ -270,19 +270,7 @@ void DestroyGL() {
 }
 
 
-#define NUM_COLORS 10
-static float Colors[NUM_COLORS][3]={
-{0.4f,0.4f,0.f},
-{0.2f,0.7f,0.4f},
-{0.8f,0.2f,0.2f},
-{0.4f,1.0f,0.2f},
-{0.2f,0.4f,1.f},
-{1.0f,0.4f,0.4f},
-{1.0f,1.f,0.4f},
-{0.8f,0.2f,0.8f},
-{0.5f,0.7f,1.0f},
-{0.65f,0.65f,0.65f}
-};
+
 
 
 void DrawGL(void) 
@@ -395,6 +383,19 @@ void DrawGL(void)
 
 
     /*{ // All meshes
+#       define NUM_COLORS 10
+        static float Colors[NUM_COLORS][3]={
+                {0.4f,0.4f,0.f},
+                {0.2f,0.7f,0.4f},
+                {0.8f,0.2f,0.2f},
+                {0.4f,1.0f,0.2f},
+                {0.2f,0.4f,1.f},
+                {1.0f,0.4f,0.4f},
+                {1.0f,1.f,0.4f},
+                {0.8f,0.2f,0.8f},
+                {0.5f,0.7f,1.0f},
+                {0.65f,0.65f,0.65f}
+        };
         int i;const int HALF_TEAPOT_MESH_COUNT = TEAPOT_MESH_COUNT/2+1;
         Teapot_SetScaling(0.5,0.5,0.5);
         for (i=0;i<TEAPOT_MESH_COUNT;i++)   {
@@ -437,6 +438,7 @@ Config_Save(&config,ConfigFileName);
 
 void GlutNormalKeys(unsigned char key, int x, int y) {
     const int mod = glutGetModifiers();
+    (void)(x);(void)(y);    // -Wunused-parameter
     switch (key) {
 #	ifndef __EMSCRIPTEN__	
     case 27: 	// esc key
@@ -483,6 +485,7 @@ static void resetCamera() {
 void GlutSpecialKeys(int key,int x,int y)
 {
     const int mod = glutGetModifiers();
+    (void)(x);(void)(y);    // -Wunused-parameter
     if (!(mod&GLUT_ACTIVE_CTRL))	{
         switch (key) {
         case GLUT_KEY_LEFT:
@@ -559,8 +562,8 @@ void GlutSpecialKeys(int key,int x,int y)
     }
 }
 
-void GlutMouse(int a,int b,int c,int d) {
-
+void GlutMouse(int button,int state,int x,int y) {
+    (void)(button);(void)(state);(void)(x);(void)(y);    // -Wunused-parameter
 }
 
 // Note that we have used GlutFakeDrawGL() so that at startup

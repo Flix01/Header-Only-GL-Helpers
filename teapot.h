@@ -1311,7 +1311,8 @@ Teapot_MeshData* Teapot_MeshData_GetMeshUnderMouse(Teapot_MeshData* const* meshe
     Teapot_Helper_InvertMatrix(vpMatrixInv,vpMatrixInv);
     Teapot_Helper_UnProject_MvpMatrixInv(mouseX,viewport4[3]-mouseY-1,0.0,vpMatrixInv,viewport4,&rayOrigin[0],&rayOrigin[1],&rayOrigin[2]);
     Teapot_Helper_UnProject_MvpMatrixInv(mouseX,viewport4[3]-mouseY-1,1.0,vpMatrixInv,viewport4,&rayDir[0],&rayDir[1],&rayDir[2]);
-    for (i=0;i<3;i++) rayDir[i]-=rayOrigin[i];Teapot_Helper_Vector3Normalize(rayDir);
+    for (i=0;i<3;i++) rayDir[i]-=rayOrigin[i];
+    Teapot_Helper_Vector3Normalize(rayDir);
     //printf("rayOrigin={%1.2f,%1.2f,%1.2f} rayDir={%1.2f,%1.2f,%1.2f}\n",rayOrigin[0],rayOrigin[1],rayOrigin[2],rayDir[0],rayDir[1],rayDir[2]);
 
     // 2) Loop all meshes and find OBB vs ray intersection
@@ -3057,7 +3058,7 @@ void Teapot_Init(void) {
                     const float A=0.5;const float verts[] = {0,-A,-A,0,-A,A,0,A,A,0,A,-A};
                     const unsigned short inds[] = {
                         3,2,0,2,1,0    // Front
-#                       ifdef TEAPOT_NO_MESH_PLANE_X_BACK_FACE
+#                       ifndef TEAPOT_NO_MESH_PLANE_X_BACK_FACE
                         ,0,1,2,2,3,0   // Back
 #                       endif //TEAPOT_NO_MESH_PLANE_X_BACK_FACE
                     };
@@ -3072,7 +3073,7 @@ void Teapot_Init(void) {
                     const float A=0.5;const float verts[] = {-A,0,-A,   A,0,-A, A,0,A,  -A,0,A};
                     const unsigned short inds[] = {
                         3,2,0,2,1,0     // Front
-#                       ifdef TEAPOT_NO_MESH_PLANE_Y_BACK_FACE
+#                       ifndef TEAPOT_NO_MESH_PLANE_Y_BACK_FACE
                         ,0,1,2,2,3,0    // Back
 #                       endif //TEAPOT_NO_MESH_PLANE_Y_BACK_FACE
                     };
@@ -3087,7 +3088,7 @@ void Teapot_Init(void) {
                     const float A=0.5;const float verts[] = {-A,-A,0,A,-A,0,A,A,0,-A,A,0};
                     const unsigned short inds[] = {
                         0,1,2,2,3,0     // Front
-#                       ifdef TEAPOT_NO_MESH_PLANE_Z_BACK_FACE
+#                       ifndef TEAPOT_NO_MESH_PLANE_Z_BACK_FACE
                         ,3,2,0,2,1,0    // Back
 #                       endif //TEAPOT_NO_MESH_PLANE_Z_BACK_FACE
                     };

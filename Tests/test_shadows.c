@@ -741,6 +741,7 @@ Config_Save(&config,ConfigFileName);
 
 void GlutNormalKeys(unsigned char key, int x, int y) {
     const int mod = glutGetModifiers();
+    (void)(x);(void)(y);    // -Wunused-parameter
     switch (key) {
 #	ifndef __EMSCRIPTEN__	
     case 27: 	// esc key
@@ -803,6 +804,7 @@ static void resetLight() {
 void GlutSpecialKeys(int key,int x,int y)
 {
     const int mod = glutGetModifiers();
+    (void)(x);(void)(y);    // -Wunused-parameter
     if (!(mod&GLUT_ACTIVE_CTRL) && !(mod&GLUT_ACTIVE_SHIFT))	{
         switch (key) {
         case GLUT_KEY_LEFT:

@@ -66,6 +66,8 @@ Tests/reps/
 *.user
 *.cfg
 *.ini
+*.qmake.stash
+Makefile
 Tests/Makefile
 *.exe
 Tests/test_im*

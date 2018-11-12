@@ -43,6 +43,11 @@ by using MACRO_GL_IMMEDIATE_MODE_MATRIX_STACK_SCOPE in any scope like this:
 
 //#define IM_MATRIX_STACK_USE_DOUBLE_PRECISION if you want to use doubles.
 #define IM_MATRIX_STACK_IMPLEMENTATION  must be defined in one of the source files
+
+// OPTIONAL DEFINITIONS:
+//
+//#define IM_MATRIX_STACK_USE_SIMD                               // (experimental) speeds up IMMultMatrix(...) using SIMD (about 1.5x-2x when compiled with -O3 -DNDEBUG -march=native), Requires -msse (OR -mavx when using double precision).
+//
 */
 
 #ifndef IM_MATRIX_STACK_H
@@ -52,7 +57,7 @@ by using MACRO_GL_IMMEDIATE_MODE_MATRIX_STACK_SCOPE in any scope like this:
 extern "C"	{
 #endif
 
-#define IM_MATRIX_STACK_VERSION 0.5
+#define IM_MATRIX_STACK_VERSION 0.6
 
 #ifdef IM_MATRIX_STACK_NO_RESTRICT  // please define it globally if the keyword __restrict is not present
 #   ifndef __restrict
@@ -65,6 +70,21 @@ typedef float  imoat;
 #else
 typedef double imoat;
 #endif
+
+#ifdef IM_MATRIX_STACK_USE_SIMD
+#if (!defined(__SSE__) && (defined(_MSC_VER) && defined(_M_IX86_FP) && _M_IX86_FP>0))
+#define __SSE__		// _MSC_VER does not always define it... (but it always defines __AVX__)
+#endif // __SSE__
+#ifndef IM_MATRIX_STACK_USE_DOUBLE_PRECISION
+#ifdef __SSE__
+#include <xmmintrin.h>	// SSE
+#endif //__SSE__
+#else // IM_MATRIX_STACK_USE_DOUBLE_PRECISION
+#ifdef __AVX__
+#include <immintrin.h>	// AVX (and everything)
+#endif //__AVX__
+#endif // IM_MATRIX_STACK_USE_DOUBLE_PRECISION
+#endif //IM_MATRIX_STACK_USE_SIMD
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -193,31 +213,75 @@ static __inline void IMSetMatrixIdentity(imoat* __restrict m16) {
 static __inline void IMCopyMatrix(imoat* __restrict dst16,const imoat* __restrict src16) {
     int i;for (i=0;i<16;i++) dst16[i]=src16[i];
 }
+static __inline void IMMultMatrixUncheckArgs(imoat* __restrict result16,const imoat* __restrict ml16,const imoat* __restrict mr16) {
+    int i,i4;
+#	if (defined(IM_MATRIX_STACK_USE_SIMD) && !defined(IM_MATRIX_STACK_USE_DOUBLE_PRECISION) && defined(__SSE__))
+    __m128 row1 = _mm_loadu_ps(&ml16[0]);
+    __m128 row2 = _mm_loadu_ps(&ml16[4]);
+    __m128 row3 = _mm_loadu_ps(&ml16[8]);
+    __m128 row4 = _mm_loadu_ps(&ml16[12]);
+    for(i=0; i<4; i++) {
+        i4 = 4*i;
+        __m128 brod1 = _mm_set1_ps(mr16[i4]);
+        __m128 brod2 = _mm_set1_ps(mr16[i4 + 1]);
+        __m128 brod3 = _mm_set1_ps(mr16[i4 + 2]);
+        __m128 brod4 = _mm_set1_ps(mr16[i4 + 3]);
+        __m128 row = _mm_add_ps(
+                    _mm_add_ps(
+                        _mm_mul_ps(brod1, row1),
+                        _mm_mul_ps(brod2, row2)),
+                    _mm_add_ps(
+                        _mm_mul_ps(brod3, row3),
+                        _mm_mul_ps(brod4, row4)));
+        _mm_storeu_ps(&result16[i4], row);
+    }
+#	elif (defined(IM_MATRIX_STACK_USE_SIMD) && defined(IM_MATRIX_STACK_USE_DOUBLE_PRECISION) && defined(__AVX__))
+    __m256d row1 = _mm256_loadu_pd(&ml16[0]);
+    __m256d row2 = _mm256_loadu_pd(&ml16[4]);
+    __m256d row3 = _mm256_loadu_pd(&ml16[8]);
+    __m256d row4 = _mm256_loadu_pd(&ml16[12]);
+    for(i=0; i<4; i++) {
+        i4 = 4*i;
+        __m256d brod1 = _mm256_set1_pd(mr16[i4]);
+        __m256d brod2 = _mm256_set1_pd(mr16[i4 + 1]);
+        __m256d brod3 = _mm256_set1_pd(mr16[i4 + 2]);
+        __m256d brod4 = _mm256_set1_pd(mr16[i4 + 3]);
+        __m256d row = _mm256_add_pd(
+                    _mm256_add_pd(
+                        _mm256_mul_pd(brod1, row1),
+                        _mm256_mul_pd(brod2, row2)),
+                    _mm256_add_pd(
+                        _mm256_mul_pd(brod3, row3),
+                        _mm256_mul_pd(brod4, row4)));
+        _mm256_storeu_pd(&result16[i4], row);
+    }
+#	else //IM_MATRIX_STACK_USE_SIMD
+    /* reference implementation */
+    imoat mri4plus0,mri4plus1,mri4plus2,mri4plus3;
+    for(i = 0; i < 4; i++) {
+        i4=4*i;mri4plus0=mr16[i4];mri4plus1=mr16[i4+1];mri4plus2=mr16[i4+2];mri4plus3=mr16[i4+3];
+        result16[  i4] = ml16[0]*mri4plus0 + ml16[4]*mri4plus1 + ml16[ 8]*mri4plus2 + ml16[12]*mri4plus3;
+        result16[1+i4] = ml16[1]*mri4plus0 + ml16[5]*mri4plus1 + ml16[ 9]*mri4plus2 + ml16[13]*mri4plus3;
+        result16[2+i4] = ml16[2]*mri4plus0 + ml16[6]*mri4plus1 + ml16[10]*mri4plus2 + ml16[14]*mri4plus3;
+        result16[3+i4] = ml16[3]*mri4plus0 + ml16[7]*mri4plus1 + ml16[11]*mri4plus2 + ml16[15]*mri4plus3;
+    }
+#	endif //IM_MATRIX_STACK_USE_SIMD
+}
 static __inline void IMMultMatrix(imoat* __restrict dst16,const imoat* __restrict mLeft16,const imoat* __restrict mRight16) {
     imoat* dst = dst16;
     const imoat* m1 = mLeft16;
     const imoat* m2 = mRight16;
-    int i,j,j4;
     if (dst==m1) {
         imoat M1[16];IMCopyMatrix(M1,m1);
-        IMMultMatrix(dst,M1,m2);
+        IMMultMatrixUncheckArgs(dst,M1,m2);
         return;
     }
     else if (dst==m2) {
         imoat M2[16];IMCopyMatrix(M2,m2);
-        IMMultMatrix(dst,m1,M2);
+        IMMultMatrixUncheckArgs(dst,m1,M2);
         return;
     }
-    for(i = 0; i < 4; i++) {
-        for(j = 0; j < 4; j++) {
-            j4 = 4*j;
-            dst[i+j4] =
-                    m1[i]    * m2[0+j4] +
-                    m1[i+4]  * m2[1+j4] +
-                    m1[i+8]  * m2[2+j4] +
-                    m1[i+12] * m2[3+j4];
-        }
-    }
+    IMMultMatrixUncheckArgs(dst,m1,m2);
 }
 static __inline void IMMatrixInvertXZAxisInPlace(imoat* __restrict mInOut16) {
     imoat* m = mInOut16;

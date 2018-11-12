@@ -58,6 +58,8 @@
 //#define DYNAMIC_RESOLUTION_SHADOW_USE_PCF 4                       // (optional, but needs a value>0, otherwise will be set to zero). Basically it prepares the shadow texture map to be used for PCF (teapot.h is used can track and use this value).
 //                                                                  // Warning: when DYNAMIC_RESOLUTION_SHADOW_USE_PCF is used with emscripten, it needs: -s USE_WEBGL2=1
 //
+//#define DYNAMIC_RESOLUTION_USE_SIMD                               // (experimental) speeds up Dynamic_Resolution_Helper_MultMatrix(...) using SIMD (about 1.5x-2x when compiled with -O3 -DNDEBUG -march=native), Requires -msse (OR -mavx when using double precision).
+//
 //#define DYNAMIC_RESOLUTION_NUM_RENDER_TARGETS                     // (default is 1) Basically it pingpongs render targets, greatly increasing memory consumption. Not sure if it's faster or not and if it's artifact-free.
 
 
@@ -69,7 +71,7 @@ extern "C"	{
 #endif
 
 #ifndef DYNAMIC_RESOLUTION_VERSION
-#   define DYNAMIC_RESOLUTION_VERSION 1.0
+#   define DYNAMIC_RESOLUTION_VERSION 1.1
 #endif //DYNAMIC_RESOLUTION_VERSION
 
 /* The __restrict and __restrict__ keywords are recognized in both C, at all language levels, and C++, at LANGLVL(EXTENDED).*/
@@ -84,6 +86,21 @@ typedef float  droat;       // short form of dynamic_resolution_float
 #else
 typedef double droat;
 #endif
+
+#ifdef DYNAMIC_RESOLUTION_USE_SIMD
+#if (!defined(__SSE__) && (defined(_MSC_VER) && defined(_M_IX86_FP) && _M_IX86_FP>0))
+#define __SSE__		// _MSC_VER does not always define it... (but it always defines __AVX__)
+#endif // __SSE__
+#ifndef DYNAMIC_RESOLUTION_USE_DOUBLE_PRECISION
+#ifdef __SSE__
+#include <xmmintrin.h>	// SSE
+#endif //__SSE__
+#else // DYNAMIC_RESOLUTION_USE_DOUBLE_PRECISION
+#ifdef __AVX__
+#include <immintrin.h>	// AVX (and everything)
+#endif //__AVX__
+#endif // DYNAMIC_RESOLUTION_USE_DOUBLE_PRECISION
+#endif //DYNAMIC_RESOLUTION_USE_SIMD
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -159,28 +176,72 @@ static __inline void Dynamic_Resolution_Helper_IdentityMatrix(droat* __restrict 
 static __inline void Dynamic_Resolution_Helper_CopyMatrix(droat* __restrict dst16,const droat* __restrict src16) {
     int i;for (i=0;i<16;i++) dst16[i]=src16[i];
 }
+static __inline void Dynamic_Resolution_Helper_MultMatrixUncheckArgs(droat* __restrict result16,const droat* __restrict ml16,const droat* __restrict mr16) {
+    int i,i4;
+#	if (defined(DYNAMIC_RESOLUTION_USE_SIMD) && !defined(DYNAMIC_RESOLUTION_USE_DOUBLE_PRECISION) && defined(__SSE__))
+    __m128 row1 = _mm_loadu_ps(&ml16[0]);
+    __m128 row2 = _mm_loadu_ps(&ml16[4]);
+    __m128 row3 = _mm_loadu_ps(&ml16[8]);
+    __m128 row4 = _mm_loadu_ps(&ml16[12]);
+    for(i=0; i<4; i++) {
+        i4 = 4*i;
+        __m128 brod1 = _mm_set1_ps(mr16[i4]);
+        __m128 brod2 = _mm_set1_ps(mr16[i4 + 1]);
+        __m128 brod3 = _mm_set1_ps(mr16[i4 + 2]);
+        __m128 brod4 = _mm_set1_ps(mr16[i4 + 3]);
+        __m128 row = _mm_add_ps(
+                    _mm_add_ps(
+                        _mm_mul_ps(brod1, row1),
+                        _mm_mul_ps(brod2, row2)),
+                    _mm_add_ps(
+                        _mm_mul_ps(brod3, row3),
+                        _mm_mul_ps(brod4, row4)));
+        _mm_storeu_ps(&result16[i4], row);
+    }
+#	elif (defined(DYNAMIC_RESOLUTION_USE_SIMD) && defined(DYNAMIC_RESOLUTION_USE_DOUBLE_PRECISION) && defined(__AVX__))
+    __m256d row1 = _mm256_loadu_pd(&ml16[0]);
+    __m256d row2 = _mm256_loadu_pd(&ml16[4]);
+    __m256d row3 = _mm256_loadu_pd(&ml16[8]);
+    __m256d row4 = _mm256_loadu_pd(&ml16[12]);
+    for(i=0; i<4; i++) {
+        i4 = 4*i;
+        __m256d brod1 = _mm256_set1_pd(mr16[i4]);
+        __m256d brod2 = _mm256_set1_pd(mr16[i4 + 1]);
+        __m256d brod3 = _mm256_set1_pd(mr16[i4 + 2]);
+        __m256d brod4 = _mm256_set1_pd(mr16[i4 + 3]);
+        __m256d row = _mm256_add_pd(
+                    _mm256_add_pd(
+                        _mm256_mul_pd(brod1, row1),
+                        _mm256_mul_pd(brod2, row2)),
+                    _mm256_add_pd(
+                        _mm256_mul_pd(brod3, row3),
+                        _mm256_mul_pd(brod4, row4)));
+        _mm256_storeu_pd(&result16[i4], row);
+    }
+#	else //DYNAMIC_RESOLUTION_USE_SIMD
+    /* reference implementation */
+    droat mri4plus0,mri4plus1,mri4plus2,mri4plus3;
+    for(i = 0; i < 4; i++) {
+        i4=4*i;mri4plus0=mr16[i4];mri4plus1=mr16[i4+1];mri4plus2=mr16[i4+2];mri4plus3=mr16[i4+3];
+        result16[  i4] = ml16[0]*mri4plus0 + ml16[4]*mri4plus1 + ml16[ 8]*mri4plus2 + ml16[12]*mri4plus3;
+        result16[1+i4] = ml16[1]*mri4plus0 + ml16[5]*mri4plus1 + ml16[ 9]*mri4plus2 + ml16[13]*mri4plus3;
+        result16[2+i4] = ml16[2]*mri4plus0 + ml16[6]*mri4plus1 + ml16[10]*mri4plus2 + ml16[14]*mri4plus3;
+        result16[3+i4] = ml16[3]*mri4plus0 + ml16[7]*mri4plus1 + ml16[11]*mri4plus2 + ml16[15]*mri4plus3;
+    }
+#	endif //DYNAMIC_RESOLUTION_USE_SIMD
+}
 static __inline void Dynamic_Resolution_Helper_MultMatrix(droat* __restrict result16,const droat* __restrict ml16,const droat* __restrict mr16) {
-    int i,j,j4;
     if (result16==ml16) {
         droat ML16[16];Dynamic_Resolution_Helper_CopyMatrix(ML16,ml16);
-        Dynamic_Resolution_Helper_MultMatrix(result16,ML16,mr16);
+        Dynamic_Resolution_Helper_MultMatrixUncheckArgs(result16,ML16,mr16);
         return;
     }
     else if (result16==mr16) {
         droat MR16[16];Dynamic_Resolution_Helper_CopyMatrix(MR16,mr16);
-        Dynamic_Resolution_Helper_MultMatrix(result16,ml16,MR16);
+        Dynamic_Resolution_Helper_MultMatrixUncheckArgs(result16,ml16,MR16);
         return;
     }
-    for(i = 0; i < 4; i++) {
-        for(j = 0; j < 4; j++) {
-            j4 = 4*j;
-            result16[i+j4] =
-                ml16[i]    * mr16[0+j4] +
-                ml16[i+4]  * mr16[1+j4] +
-                ml16[i+8]  * mr16[2+j4] +
-                ml16[i+12] * mr16[3+j4];
-        }
-    }
+    Dynamic_Resolution_Helper_MultMatrixUncheckArgs(result16,ml16,mr16);
 }
 void Dynamic_Resolution_Helper_InvertFast(droat* __restrict mOut16,const droat* __restrict m16);
 
@@ -801,7 +862,7 @@ void Dynamic_Resolution_Shadow_Set_VpMatrix(const droat vpMatrix[16]) {
 
 void Dynamic_Resolution_Shadow_Set_MMatrix(const droat mMatrix[16]) {
     droat tmp[16];
-    Dynamic_Resolution_Helper_MultMatrix(tmp,render_target.shadowVpMatrix,mMatrix);
+    Dynamic_Resolution_Helper_MultMatrixUncheckArgs(tmp,render_target.shadowVpMatrix,mMatrix);
     Dynamic_Resolution_Helper_GlUniformMatrix4v(render_target.shadow_uLoc_shadowMvpMatrix,1,GL_FALSE,tmp);
 }
 
