@@ -81,6 +81,7 @@ SOME USEFUL DEFINITIONS
 NM_DOUBLE_PRECISION                  minimath.h works with doubles instead of floats.
 NM_NO_MATH_STRUCTS                   only API <0> and <1> are available (good choice!).
 NM_BEST_GLM_COMPATIBILITY            [C++ only] enables API <4>.
+NM_GLM_MATRIX_SUBSCRIPT_OPERATOR     [C++ only: already defined by NM_BEST_GLM_COMPATIBILITY] It affects the C++ [] operator of mat3 and mat4, making it work like in glm (not the best choice IMO: better use the col[col][row] field explicitly).
 NM_HAS_CFG                           if too many NM_ defs pollute your project settings, just define NM_HAS_CFG, create "minimath_cfg.h" and put all the other NM_ defs there.
 NM_NAMESPACE                         [C++ only] [needs a name] wraps API <2> and <3> with namespace NM_NAMESPACE (and if <4> is enabled, it overwrites the "glm" namespace).
 NM_NO_CPP_CTRS                       [C++ only] with this, to init structs you can't use C++ ctrs anymore, but now you can use C-style: vec2 v2={{{1,2}}}; [vec2 v2={1,2}; works with a warning] Tip: vec2 v2=make_vec2(1,2); WORKS in ANY case.
