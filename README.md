@@ -7,6 +7,7 @@ teapot.h             |   C/C++  |      Yes     | The basic file that is used in 
 dynamic_resolution.h |   C/C++  |      Yes     | Implements dynamic resolution and the first shadow mapping pass 
 im_matrix_stack.h    |   C/C++  |      No      | Implements a matrix stack and some other helper methods
 sdf.h                |   C++    |      Yes     | Signed distance fonts to display text on screen
+minimath.h           |   C/C++  |      No      | Just a collection of all the math of the other files (no example available)  
 
 
 # Demos

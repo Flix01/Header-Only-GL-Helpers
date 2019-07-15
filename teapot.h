@@ -1963,9 +1963,10 @@ static int _Teapot_MeshData_Comparer(const void* pmd0,const void* pmd1) {
     const Teapot_MeshData* md1 = *((const Teapot_MeshData* const*) (pmd1));
     if (md0->color[3]<1.f)   {
         if (md1->color[3]<1.f) {
+            return md1->mvMatrix[14]>md0->mvMatrix[14]?-1:1;
             //return fabsf(md1->mvMatrix[14])-fabsf(md0->mvMatrix[14]);
-            return (md1->mvMatrix[12]*md1->mvMatrix[12]+md1->mvMatrix[13]*md1->mvMatrix[13]+md1->mvMatrix[14]*md1->mvMatrix[14]) -
-                    (md0->mvMatrix[12]*md0->mvMatrix[12]+md0->mvMatrix[13]*md0->mvMatrix[13]+md0->mvMatrix[14]*md0->mvMatrix[14]);
+            //return (md1->mvMatrix[12]*md1->mvMatrix[12]+md1->mvMatrix[13]*md1->mvMatrix[13]+md1->mvMatrix[14]*md1->mvMatrix[14]) -
+            //        (md0->mvMatrix[12]*md0->mvMatrix[12]+md0->mvMatrix[13]*md0->mvMatrix[13]+md0->mvMatrix[14]*md0->mvMatrix[14]);
         }
         else return 1;
     }

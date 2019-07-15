@@ -79,6 +79,9 @@ Tests/test_sdf
 glImmediateMode.h
 obj.h
 Sdf/
+miniobjloader.h
+minizip/
+
 
 
 
