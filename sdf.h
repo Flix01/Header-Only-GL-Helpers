@@ -1120,6 +1120,14 @@ struct SdfCharset {
 
         // From now on we must use "pdata" and "data_size" only
 
+        // DONE: support some (optional) form of compression of these lines:
+        //"char id=34      x=97   y=386  width=10   height=9    xoffset=-1   yoffset=1    xadvance=8    page=0    chnl=0 \n"
+        //"kerning first=121 second=46 amount=-1\n"
+        // into:
+        //"ch 34 97 386 10 9 -1 1 8 0 0\n"
+        //"ke 121 46 -1\n"
+        // to reduce size of embedded font text
+
         // Here we must fill all the fields of "f" based on "pdata" and "data_size":
         char tmp[1024];tmp[0]='\0';
         int tmpi=0;size_t gsize=0,ksize=0;
@@ -1129,13 +1137,18 @@ struct SdfCharset {
             const char* line_end = line_start;
             while (line_end < buf_end && *line_end != '\n' && *line_end != '\r') line_end++;
 
-            if (strncmp(line_start,"char ",4)==0 && GlyphsCount>0)  {
+            if (strncmp(line_start,"ch",2)==0 && GlyphsCount>0)  {
                 //char id=32   x=236   y=116   width=3     height=1     xoffset=-1    yoffset=15    xadvance=4     page=0  chnl=15
                 int a[7] = {0,0,0,0,0,0,0};
                 float b[3] = {0,0,0};
-                if (sscanf(&line_start[4], " id=%i  x=%i y=%i width=%i height=%i xoffset=%f yoffset=%f xadvance=%f page=%i chnl=%i",
-                           &a[0],&a[1],&a[2],&a[3],&a[4],&b[0],&b[1],&b[2],&a[5],&a[6]))
+                int res = 0;
+                if (strncmp(&line_start[2],"ar ",2)==0) res = sscanf(&line_start[4], " id=%i  x=%i y=%i width=%i height=%i xoffset=%f yoffset=%f xadvance=%f page=%i chnl=%i",
+                        &a[0],&a[1],&a[2],&a[3],&a[4],&b[0],&b[1],&b[2],&a[5],&a[6]);
+                else res = sscanf(&line_start[2], " id=%i  %i %i %i %i %f %f %f %i %i",
+                        &a[0],&a[1],&a[2],&a[3],&a[4],&b[0],&b[1],&b[2],&a[5],&a[6]);
+                if (res)
                 {
+                    //SDF_ASSERT(res==10);
                     SDF_ASSERT(ScaleW!=0 && ScaleH!=0);
                     g.Id = (unsigned int) a[0];
                     g.X = (float) a[1]/ScaleW;
@@ -1158,10 +1171,14 @@ struct SdfCharset {
                 }
                 else fprintf(stderr,"Warning in SdfCharset::LoadTextFntFileFromMemory(\"glyph \"): skipped line [%.50s] (parsing error).\n",line_start);
             }
-            else if (strncmp(line_start,"kerning ",7)==0 && KerningsCount>0)  {
+            else if (strncmp(line_start,"ke",2)==0 && KerningsCount>0)  {
                 int a[3] = {0,0,0};
-                if (sscanf(&line_start[7]," first=%i  second=%i amount=%i",&a[0],&a[1],&a[2]))
+                int res = 0;
+                if (strncmp(&line_start[2],"rning ",5)==0) res = sscanf(&line_start[7]," first=%i  second=%i amount=%i",&a[0],&a[1],&a[2]);
+                else res = sscanf(&line_start[2]," %i  %i %i",&a[0],&a[1],&a[2]);
+                if (res)
                 {
+                    //SDF_ASSERT(res==3);
                     SDF_ASSERT(FontSize!=0);
                     //Kernings.put(ImPair<unsigned int,unsigned int>(a[0],a[1]),(float)a[2]/FontSize);
                     Kernings[SdfUIntPair(a[0],a[1])] = (float)a[2]/FontSize;
@@ -1277,6 +1294,9 @@ struct SdfCharset {
             }
             line_start = line_end+1;
         }
+
+        //SDF_ASSERT(GlyphsCount==gsize);
+        //SDF_ASSERT(KerningsCount==ksize);
 
         // Add extra codepoints:
         /*
@@ -2536,1742 +2556,306 @@ bool SdfCharset::GetEmbeddedFontData(SdfVector<char>& fntFileOut,SdfVector<unsig
 {
     // "DejaVuSerifCondensed-Bold.fnt.inl":
     {
+        /* We've used this 'text compression' trick here:
+        "char id=34      x=97   y=386  width=10   height=9    xoffset=-1   yoffset=1    xadvance=8    page=0    chnl=0 \n"
+        "ch 34 97 386 10 9 -1 1 8 0 0\n"
+        and here:
+        "kerning first=121 second=46 amount=-1\n"
+        "ke 121 46 -1\n"
+        [But it's optional, just to save embedded text space]*/
         const char fntData[] = "info face=\"DejaVu Sans Condensed Bold\" size=16 bold=1 italic=0 charset=\"\" unicode=0 stretchH=100 smooth=1 aa=1 padding=2,2,2,2 spacing=-4,-4\n"	\
                                "common lineHeight=19 base=15 scaleW=512 scaleH=512 pages=1 packed=0\n"	\
                                "page id=0 file=\"DejaVuSansCondensed-Bold-512x512.png\"\n"	\
                                "chars count=853\n"	\
-                               "char id=0       x=426  y=67   width=12   height=19   xoffset=-2   yoffset=1    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=13      x=0    y=0    width=0    height=0    xoffset=-2   yoffset=0    xadvance=0    page=0    chnl=0 \n"	\
-                               "char id=32      x=0    y=0    width=0    height=0    xoffset=-2   yoffset=0    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=33      x=254  y=248  width=7    height=16   xoffset=0    yoffset=1    xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=34      x=97   y=386  width=10   height=9    xoffset=-1   yoffset=1    xadvance=8    page=0    chnl=0 \n"	\
-                               "char id=35      x=261  y=248  width=16   height=16   xoffset=-2   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=36      x=101  y=26   width=13   height=20   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=37      x=268  y=162  width=18   height=17   xoffset=-2   yoffset=1    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=38      x=286  y=162  width=16   height=17   xoffset=-2   yoffset=1    xadvance=13   page=0    chnl=0 \n"	\
-                               "char id=39      x=504  y=373  width=7    height=9    xoffset=-1   yoffset=1    xadvance=4    page=0    chnl=0 \n"	\
-                               "char id=40      x=114  y=26   width=9    height=20   xoffset=-1   yoffset=0    xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=41      x=123  y=26   width=9    height=20   xoffset=-1   yoffset=0    xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=42      x=362  y=373  width=12   height=12   xoffset=-2   yoffset=1    xadvance=8    page=0    chnl=0 \n"	\
-                               "char id=43      x=206  y=329  width=14   height=15   xoffset=-1   yoffset=2    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=44      x=429  y=373  width=8    height=11   xoffset=-2   yoffset=9    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=45      x=360  y=386  width=10   height=7    xoffset=-2   yoffset=7    xadvance=6    page=0    chnl=0 \n"	\
-                               "char id=46      x=169  y=386  width=7    height=8    xoffset=-1   yoffset=9    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=47      x=247  y=125  width=10   height=18   xoffset=-2   yoffset=1    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=48      x=302  y=162  width=14   height=17   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=49      x=277  y=248  width=13   height=16   xoffset=-1   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=50      x=290  y=248  width=12   height=16   xoffset=-1   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=51      x=316  y=162  width=13   height=17   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=52      x=302  y=248  width=14   height=16   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=53      x=329  y=162  width=13   height=17   xoffset=-1   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=54      x=342  y=162  width=14   height=17   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=55      x=316  y=248  width=13   height=16   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=56      x=356  y=162  width=14   height=17   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=57      x=370  y=162  width=14   height=17   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=58      x=502  y=345  width=8    height=13   xoffset=-1   yoffset=4    xadvance=6    page=0    chnl=0 \n"	\
-                               "char id=59      x=329  y=248  width=9    height=16   xoffset=-2   yoffset=4    xadvance=6    page=0    chnl=0 \n"	\
-                               "char id=60      x=290  y=329  width=14   height=14   xoffset=-1   yoffset=3    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=61      x=467  y=373  width=14   height=10   xoffset=-1   yoffset=5    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=62      x=304  y=329  width=14   height=14   xoffset=-1   yoffset=3    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=63      x=338  y=248  width=11   height=16   xoffset=-1   yoffset=1    xadvance=8    page=0    chnl=0 \n"	\
-                               "char id=64      x=438  y=67   width=18   height=19   xoffset=-2   yoffset=1    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=65      x=349  y=248  width=16   height=16   xoffset=-2   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=66      x=365  y=248  width=13   height=16   xoffset=-1   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=67      x=384  y=162  width=14   height=17   xoffset=-2   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=68      x=378  y=248  width=15   height=16   xoffset=-1   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=69      x=393  y=248  width=12   height=16   xoffset=-1   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=70      x=405  y=248  width=12   height=16   xoffset=-1   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=71      x=398  y=162  width=15   height=17   xoffset=-2   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=72      x=417  y=248  width=14   height=16   xoffset=-1   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=73      x=431  y=248  width=8    height=16   xoffset=-1   yoffset=1    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=74      x=132  y=26   width=10   height=20   xoffset=-3   yoffset=1    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=75      x=439  y=248  width=15   height=16   xoffset=-1   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=76      x=454  y=248  width=12   height=16   xoffset=-1   yoffset=1    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=77      x=466  y=248  width=16   height=16   xoffset=-1   yoffset=1    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=78      x=482  y=248  width=14   height=16   xoffset=-1   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=79      x=413  y=162  width=16   height=17   xoffset=-2   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=80      x=496  y=248  width=13   height=16   xoffset=-1   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=81      x=456  y=67   width=16   height=19   xoffset=-2   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=82      x=0    y=265  width=14   height=16   xoffset=-1   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=83      x=429  y=162  width=13   height=17   xoffset=-1   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=84      x=14   y=265  width=14   height=16   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=85      x=442  y=162  width=14   height=17   xoffset=-1   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=86      x=28   y=265  width=16   height=16   xoffset=-2   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=87      x=44   y=265  width=20   height=16   xoffset=-2   yoffset=1    xadvance=16   page=0    chnl=0 \n"	\
-                               "char id=88      x=64   y=265  width=15   height=16   xoffset=-2   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=89      x=79   y=265  width=16   height=16   xoffset=-3   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=90      x=95   y=265  width=14   height=16   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=91      x=142  y=26   width=9    height=20   xoffset=-1   yoffset=0    xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=92      x=257  y=125  width=10   height=18   xoffset=-2   yoffset=1    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=93      x=151  y=26   width=10   height=20   xoffset=-2   yoffset=0    xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=94      x=107  y=386  width=14   height=9    xoffset=-1   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=95      x=465  y=386  width=12   height=6    xoffset=-2   yoffset=15   xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=96      x=176  y=386  width=9    height=8    xoffset=-2   yoffset=0    xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=97      x=318  y=329  width=13   height=14   xoffset=-2   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=98      x=267  y=125  width=13   height=18   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=99      x=331  y=329  width=12   height=14   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=100     x=280  y=125  width=14   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=101     x=343  y=329  width=14   height=14   xoffset=-2   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=102     x=456  y=162  width=11   height=17   xoffset=-2   yoffset=0    xadvance=6    page=0    chnl=0 \n"	\
-                               "char id=103     x=467  y=162  width=14   height=17   xoffset=-2   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=104     x=481  y=162  width=13   height=17   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=105     x=494  y=162  width=7    height=17   xoffset=-1   yoffset=0    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=106     x=120  y=0    width=9    height=21   xoffset=-3   yoffset=0    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=107     x=0    y=180  width=13   height=17   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=108     x=501  y=162  width=7    height=17   xoffset=-1   yoffset=0    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=109     x=150  y=359  width=17   height=13   xoffset=-1   yoffset=4    xadvance=15   page=0    chnl=0 \n"	\
-                               "char id=110     x=167  y=359  width=13   height=13   xoffset=-1   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=111     x=357  y=329  width=14   height=14   xoffset=-2   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=112     x=13   y=180  width=13   height=17   xoffset=-1   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=113     x=26   y=180  width=14   height=17   xoffset=-2   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=114     x=180  y=359  width=11   height=13   xoffset=-1   yoffset=4    xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=115     x=371  y=329  width=12   height=14   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=116     x=109  y=265  width=11   height=16   xoffset=-2   yoffset=1    xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=117     x=383  y=329  width=13   height=14   xoffset=-1   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=118     x=191  y=359  width=14   height=13   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=119     x=205  y=359  width=17   height=13   xoffset=-2   yoffset=4    xadvance=13   page=0    chnl=0 \n"	\
-                               "char id=120     x=222  y=359  width=14   height=13   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=121     x=40   y=180  width=14   height=17   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=122     x=236  y=359  width=12   height=13   xoffset=-2   yoffset=4    xadvance=8    page=0    chnl=0 \n"	\
-                               "char id=123     x=161  y=26   width=12   height=20   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=124     x=129  y=0    width=7    height=21   xoffset=-1   yoffset=0    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=125     x=173  y=26   width=12   height=20   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=126     x=185  y=386  width=14   height=8    xoffset=-1   yoffset=6    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=160     x=0    y=0    width=0    height=0    xoffset=-2   yoffset=0    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=161     x=120  y=265  width=7    height=16   xoffset=0    yoffset=4    xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=162     x=472  y=67   width=12   height=19   xoffset=-1   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=163     x=127  y=265  width=13   height=16   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=164     x=396  y=329  width=13   height=14   xoffset=-2   yoffset=3    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=165     x=140  y=265  width=14   height=16   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=166     x=503  y=0    width=7    height=19   xoffset=-1   yoffset=1    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=167     x=294  y=125  width=12   height=18   xoffset=-2   yoffset=1    xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=168     x=370  y=386  width=9    height=7    xoffset=-1   yoffset=0    xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=169     x=154  y=265  width=15   height=16   xoffset=0    yoffset=1    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=170     x=409  y=329  width=11   height=14   xoffset=-1   yoffset=1    xadvance=8    page=0    chnl=0 \n"	\
-                               "char id=171     x=374  y=373  width=11   height=12   xoffset=-1   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=172     x=481  y=373  width=14   height=10   xoffset=-1   yoffset=5    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=173     x=360  y=386  width=10   height=7    xoffset=-2   yoffset=7    xadvance=6    page=0    chnl=0 \n"	\
-                               "char id=174     x=169  y=265  width=15   height=16   xoffset=0    yoffset=1    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=175     x=379  y=386  width=9    height=7    xoffset=-1   yoffset=0    xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=176     x=495  y=373  width=9    height=10   xoffset=-1   yoffset=1    xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=177     x=220  y=329  width=14   height=15   xoffset=-1   yoffset=2    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=178     x=437  y=373  width=10   height=11   xoffset=-2   yoffset=1    xadvance=6    page=0    chnl=0 \n"	\
-                               "char id=179     x=447  y=373  width=10   height=11   xoffset=-2   yoffset=1    xadvance=6    page=0    chnl=0 \n"	\
-                               "char id=180     x=199  y=386  width=9    height=8    xoffset=0    yoffset=0    xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=181     x=54   y=180  width=14   height=17   xoffset=-1   yoffset=4    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=182     x=306  y=125  width=12   height=18   xoffset=-2   yoffset=1    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=183     x=208  y=386  width=7    height=8    xoffset=-1   yoffset=5    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=184     x=215  y=386  width=9    height=8    xoffset=-1   yoffset=13   xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=185     x=457  y=373  width=10   height=11   xoffset=-2   yoffset=1    xadvance=6    page=0    chnl=0 \n"	\
-                               "char id=186     x=420  y=329  width=12   height=14   xoffset=-2   yoffset=1    xadvance=8    page=0    chnl=0 \n"	\
-                               "char id=187     x=385  y=373  width=12   height=12   xoffset=-1   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=188     x=68   y=180  width=18   height=17   xoffset=-2   yoffset=1    xadvance=15   page=0    chnl=0 \n"	\
-                               "char id=189     x=86   y=180  width=19   height=17   xoffset=-2   yoffset=1    xadvance=15   page=0    chnl=0 \n"	\
-                               "char id=190     x=105  y=180  width=18   height=17   xoffset=-2   yoffset=1    xadvance=15   page=0    chnl=0 \n"	\
-                               "char id=191     x=123  y=180  width=11   height=17   xoffset=-1   yoffset=4    xadvance=8    page=0    chnl=0 \n"	\
-                               "char id=192     x=484  y=67   width=16   height=19   xoffset=-2   yoffset=-2   xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=193     x=0    y=87   width=16   height=19   xoffset=-2   yoffset=-2   xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=194     x=16   y=87   width=16   height=19   xoffset=-2   yoffset=-2   xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=195     x=32   y=87   width=16   height=19   xoffset=-2   yoffset=-2   xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=196     x=48   y=87   width=16   height=19   xoffset=-2   yoffset=-2   xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=197     x=64   y=87   width=16   height=19   xoffset=-2   yoffset=-2   xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=198     x=184  y=265  width=19   height=16   xoffset=-2   yoffset=1    xadvance=16   page=0    chnl=0 \n"	\
-                               "char id=199     x=185  y=26   width=14   height=20   xoffset=-2   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=200     x=80   y=87   width=12   height=19   xoffset=-1   yoffset=-2   xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=201     x=92   y=87   width=12   height=19   xoffset=-1   yoffset=-2   xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=202     x=104  y=87   width=12   height=19   xoffset=-1   yoffset=-2   xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=203     x=116  y=87   width=12   height=19   xoffset=-1   yoffset=-2   xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=204     x=500  y=67   width=9    height=19   xoffset=-2   yoffset=-2   xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=205     x=128  y=87   width=8    height=19   xoffset=-1   yoffset=-2   xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=206     x=136  y=87   width=11   height=19   xoffset=-3   yoffset=-2   xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=207     x=147  y=87   width=9    height=19   xoffset=-2   yoffset=-2   xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=208     x=203  y=265  width=16   height=16   xoffset=-2   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=209     x=156  y=87   width=14   height=19   xoffset=-1   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=210     x=199  y=26   width=16   height=20   xoffset=-2   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=211     x=215  y=26   width=16   height=20   xoffset=-2   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=212     x=231  y=26   width=16   height=20   xoffset=-2   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=213     x=247  y=26   width=16   height=20   xoffset=-2   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=214     x=263  y=26   width=16   height=20   xoffset=-2   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=215     x=432  y=329  width=14   height=14   xoffset=-1   yoffset=3    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=216     x=318  y=125  width=16   height=18   xoffset=-2   yoffset=0    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=217     x=279  y=26   width=14   height=20   xoffset=-1   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=218     x=293  y=26   width=14   height=20   xoffset=-1   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=219     x=307  y=26   width=14   height=20   xoffset=-1   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=220     x=321  y=26   width=14   height=20   xoffset=-1   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=221     x=170  y=87   width=16   height=19   xoffset=-3   yoffset=-2   xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=222     x=219  y=265  width=13   height=16   xoffset=-1   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=223     x=334  y=125  width=13   height=18   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=224     x=347  y=125  width=13   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=225     x=360  y=125  width=13   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=226     x=373  y=125  width=13   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=227     x=386  y=125  width=13   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=228     x=399  y=125  width=13   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=229     x=335  y=26   width=13   height=20   xoffset=-2   yoffset=-2   xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=230     x=446  y=329  width=19   height=14   xoffset=-2   yoffset=4    xadvance=15   page=0    chnl=0 \n"	\
-                               "char id=231     x=134  y=180  width=12   height=17   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=232     x=412  y=125  width=14   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=233     x=426  y=125  width=14   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=234     x=440  y=125  width=14   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=235     x=454  y=125  width=14   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=236     x=146  y=180  width=9    height=17   xoffset=-3   yoffset=0    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=237     x=155  y=180  width=9    height=17   xoffset=-1   yoffset=0    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=238     x=164  y=180  width=11   height=17   xoffset=-3   yoffset=0    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=239     x=175  y=180  width=9    height=17   xoffset=-2   yoffset=0    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=240     x=468  y=125  width=14   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=241     x=184  y=180  width=13   height=17   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=242     x=482  y=125  width=14   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=243     x=496  y=125  width=14   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=244     x=0    y=144  width=14   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=245     x=14   y=144  width=14   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=246     x=28   y=144  width=14   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=247     x=465  y=329  width=14   height=14   xoffset=-1   yoffset=3    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=248     x=234  y=329  width=14   height=15   xoffset=-2   yoffset=3    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=249     x=42   y=144  width=13   height=18   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=250     x=55   y=144  width=13   height=18   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=251     x=68   y=144  width=13   height=18   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=252     x=81   y=144  width=13   height=18   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=253     x=136  y=0    width=14   height=21   xoffset=-2   yoffset=0    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=254     x=150  y=0    width=13   height=21   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=255     x=163  y=0    width=14   height=21   xoffset=-2   yoffset=0    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=256     x=186  y=87   width=16   height=19   xoffset=-2   yoffset=-2   xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=257     x=94   y=144  width=13   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=258     x=202  y=87   width=16   height=19   xoffset=-2   yoffset=-2   xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=259     x=107  y=144  width=13   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=260     x=348  y=26   width=16   height=20   xoffset=-2   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=261     x=197  y=180  width=13   height=17   xoffset=-2   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=262     x=364  y=26   width=14   height=20   xoffset=-2   yoffset=-2   xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=263     x=120  y=144  width=12   height=18   xoffset=-2   yoffset=0    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=264     x=378  y=26   width=14   height=20   xoffset=-2   yoffset=-2   xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=265     x=132  y=144  width=13   height=18   xoffset=-2   yoffset=0    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=266     x=392  y=26   width=14   height=20   xoffset=-2   yoffset=-2   xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=267     x=145  y=144  width=12   height=18   xoffset=-2   yoffset=0    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=268     x=406  y=26   width=14   height=20   xoffset=-2   yoffset=-2   xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=269     x=157  y=144  width=12   height=18   xoffset=-2   yoffset=0    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=270     x=218  y=87   width=15   height=19   xoffset=-1   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=271     x=169  y=144  width=19   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=272     x=203  y=265  width=16   height=16   xoffset=-2   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=273     x=188  y=144  width=15   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=274     x=233  y=87   width=12   height=19   xoffset=-1   yoffset=-2   xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=275     x=203  y=144  width=14   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=276     x=245  y=87   width=12   height=19   xoffset=-1   yoffset=-2   xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=277     x=217  y=144  width=14   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=278     x=257  y=87   width=12   height=19   xoffset=-1   yoffset=-2   xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=279     x=231  y=144  width=14   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=280     x=420  y=26   width=12   height=20   xoffset=-1   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=281     x=210  y=180  width=14   height=17   xoffset=-2   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=282     x=269  y=87   width=12   height=19   xoffset=-1   yoffset=-2   xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=283     x=245  y=144  width=14   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=284     x=432  y=26   width=15   height=20   xoffset=-2   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=285     x=177  y=0    width=14   height=21   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=286     x=447  y=26   width=15   height=20   xoffset=-2   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=287     x=191  y=0    width=14   height=21   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=288     x=462  y=26   width=15   height=20   xoffset=-2   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=289     x=205  y=0    width=14   height=21   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=290     x=477  y=26   width=15   height=20   xoffset=-2   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=291     x=219  y=0    width=14   height=21   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=292     x=281  y=87   width=14   height=19   xoffset=-1   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=293     x=295  y=87   width=15   height=19   xoffset=-3   yoffset=-2   xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=294     x=232  y=265  width=16   height=16   xoffset=-1   yoffset=1    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=295     x=224  y=180  width=14   height=17   xoffset=-1   yoffset=0    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=296     x=310  y=87   width=10   height=19   xoffset=-3   yoffset=-2   xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=297     x=238  y=180  width=10   height=17   xoffset=-2   yoffset=0    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=298     x=320  y=87   width=9    height=19   xoffset=-2   yoffset=-2   xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=299     x=248  y=180  width=9    height=17   xoffset=-2   yoffset=0    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=300     x=329  y=87   width=9    height=19   xoffset=-2   yoffset=-2   xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=301     x=257  y=180  width=9    height=17   xoffset=-2   yoffset=0    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=302     x=492  y=26   width=9    height=20   xoffset=-1   yoffset=1    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=303     x=233  y=0    width=9    height=21   xoffset=-1   yoffset=0    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=304     x=338  y=87   width=8    height=19   xoffset=-1   yoffset=-2   xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=305     x=248  y=359  width=7    height=13   xoffset=-1   yoffset=4    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=306     x=0    y=47   width=13   height=20   xoffset=-1   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=307     x=242  y=0    width=12   height=21   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=308     x=51   y=0    width=11   height=23   xoffset=-3   yoffset=-2   xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=309     x=254  y=0    width=11   height=21   xoffset=-3   yoffset=0    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=310     x=13   y=47   width=15   height=20   xoffset=-1   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=311     x=265  y=0    width=13   height=21   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=312     x=255  y=359  width=13   height=13   xoffset=-1   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=313     x=346  y=87   width=12   height=19   xoffset=-1   yoffset=-2   xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=314     x=358  y=87   width=8    height=19   xoffset=-1   yoffset=-2   xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=315     x=28   y=47   width=12   height=20   xoffset=-1   yoffset=1    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=316     x=278  y=0    width=8    height=21   xoffset=-1   yoffset=0    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=317     x=248  y=265  width=12   height=16   xoffset=-1   yoffset=1    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=318     x=266  y=180  width=10   height=17   xoffset=-1   yoffset=0    xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=319     x=260  y=265  width=12   height=16   xoffset=-1   yoffset=1    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=320     x=276  y=180  width=10   height=17   xoffset=-1   yoffset=0    xadvance=8    page=0    chnl=0 \n"	\
-                               "char id=321     x=272  y=265  width=14   height=16   xoffset=-3   yoffset=1    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=322     x=286  y=180  width=11   height=17   xoffset=-3   yoffset=0    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=323     x=366  y=87   width=14   height=19   xoffset=-1   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=324     x=297  y=180  width=13   height=17   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=325     x=40   y=47   width=14   height=20   xoffset=-1   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=326     x=310  y=180  width=13   height=17   xoffset=-1   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=327     x=380  y=87   width=14   height=19   xoffset=-1   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=328     x=323  y=180  width=13   height=17   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=329     x=286  y=265  width=18   height=16   xoffset=-2   yoffset=1    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=330     x=54   y=47   width=14   height=20   xoffset=-1   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=331     x=336  y=180  width=13   height=17   xoffset=-1   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=332     x=68   y=47   width=16   height=20   xoffset=-2   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=333     x=259  y=144  width=14   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=334     x=84   y=47   width=16   height=20   xoffset=-2   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=335     x=273  y=144  width=14   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=336     x=100  y=47   width=16   height=20   xoffset=-2   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=337     x=287  y=144  width=14   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=338     x=349  y=180  width=20   height=17   xoffset=-2   yoffset=1    xadvance=17   page=0    chnl=0 \n"	\
-                               "char id=339     x=479  y=329  width=20   height=14   xoffset=-2   yoffset=4    xadvance=16   page=0    chnl=0 \n"	\
-                               "char id=340     x=394  y=87   width=14   height=19   xoffset=-1   yoffset=-2   xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=341     x=369  y=180  width=11   height=17   xoffset=-1   yoffset=0    xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=342     x=116  y=47   width=14   height=20   xoffset=-1   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=343     x=380  y=180  width=11   height=17   xoffset=-1   yoffset=4    xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=344     x=408  y=87   width=14   height=19   xoffset=-1   yoffset=-2   xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=345     x=391  y=180  width=11   height=17   xoffset=-1   yoffset=0    xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=346     x=130  y=47   width=13   height=20   xoffset=-1   yoffset=-2   xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=347     x=301  y=144  width=12   height=18   xoffset=-2   yoffset=0    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=348     x=143  y=47   width=13   height=20   xoffset=-1   yoffset=-2   xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=349     x=313  y=144  width=12   height=18   xoffset=-2   yoffset=0    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=350     x=156  y=47   width=13   height=20   xoffset=-1   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=351     x=402  y=180  width=12   height=17   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=352     x=169  y=47   width=13   height=20   xoffset=-1   yoffset=-2   xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=353     x=325  y=144  width=12   height=18   xoffset=-2   yoffset=0    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=354     x=182  y=47   width=14   height=20   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=355     x=196  y=47   width=11   height=20   xoffset=-2   yoffset=1    xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=356     x=422  y=87   width=14   height=19   xoffset=-2   yoffset=-2   xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=357     x=414  y=180  width=11   height=17   xoffset=-2   yoffset=0    xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=358     x=304  y=265  width=14   height=16   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=359     x=318  y=265  width=11   height=16   xoffset=-2   yoffset=1    xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=360     x=207  y=47   width=14   height=20   xoffset=-1   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=361     x=337  y=144  width=13   height=18   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=362     x=221  y=47   width=14   height=20   xoffset=-1   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=363     x=350  y=144  width=13   height=18   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=364     x=235  y=47   width=14   height=20   xoffset=-1   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=365     x=363  y=144  width=13   height=18   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=366     x=286  y=0    width=14   height=21   xoffset=-1   yoffset=-3   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=367     x=249  y=47   width=13   height=20   xoffset=-1   yoffset=-2   xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=368     x=262  y=47   width=14   height=20   xoffset=-1   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=369     x=376  y=144  width=13   height=18   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=370     x=276  y=47   width=14   height=20   xoffset=-1   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=371     x=425  y=180  width=14   height=17   xoffset=-1   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=372     x=436  y=87   width=20   height=19   xoffset=-2   yoffset=-2   xadvance=16   page=0    chnl=0 \n"	\
-                               "char id=373     x=439  y=180  width=17   height=17   xoffset=-2   yoffset=0    xadvance=13   page=0    chnl=0 \n"	\
-                               "char id=374     x=456  y=87   width=16   height=19   xoffset=-3   yoffset=-2   xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=375     x=300  y=0    width=14   height=21   xoffset=-2   yoffset=0    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=376     x=472  y=87   width=16   height=19   xoffset=-3   yoffset=-2   xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=377     x=488  y=87   width=14   height=19   xoffset=-2   yoffset=-2   xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=378     x=456  y=180  width=12   height=17   xoffset=-2   yoffset=0    xadvance=8    page=0    chnl=0 \n"	\
-                               "char id=379     x=0    y=106  width=14   height=19   xoffset=-2   yoffset=-2   xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=380     x=468  y=180  width=12   height=17   xoffset=-2   yoffset=0    xadvance=8    page=0    chnl=0 \n"	\
-                               "char id=381     x=14   y=106  width=14   height=19   xoffset=-2   yoffset=-2   xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=382     x=480  y=180  width=12   height=17   xoffset=-2   yoffset=0    xadvance=8    page=0    chnl=0 \n"	\
-                               "char id=383     x=492  y=180  width=11   height=17   xoffset=-2   yoffset=0    xadvance=6    page=0    chnl=0 \n"	\
-                               "char id=884     x=121  y=386  width=7    height=9    xoffset=-1   yoffset=0    xadvance=4    page=0    chnl=0 \n"	\
-                               "char id=885     x=128  y=386  width=7    height=9    xoffset=-1   yoffset=12   xadvance=4    page=0    chnl=0 \n"	\
-                               "char id=890     x=224  y=386  width=7    height=8    xoffset=0    yoffset=13   xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=891     x=499  y=329  width=12   height=14   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=892     x=0    y=345  width=12   height=14   xoffset=-2   yoffset=4    xadvance=8    page=0    chnl=0 \n"	\
-                               "char id=893     x=12   y=345  width=12   height=14   xoffset=-2   yoffset=4    xadvance=8    page=0    chnl=0 \n"	\
-                               "char id=894     x=329  y=265  width=9    height=16   xoffset=-2   yoffset=4    xadvance=6    page=0    chnl=0 \n"	\
-                               "char id=900     x=231  y=386  width=9    height=8    xoffset=0    yoffset=0    xadvance=6    page=0    chnl=0 \n"	\
-                               "char id=901     x=0    y=386  width=10   height=10   xoffset=-1   yoffset=-3   xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=902     x=0    y=197  width=16   height=17   xoffset=-2   yoffset=0    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=903     x=240  y=386  width=7    height=8    xoffset=-1   yoffset=5    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=904     x=16   y=197  width=16   height=17   xoffset=-3   yoffset=0    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=905     x=32   y=197  width=18   height=17   xoffset=-3   yoffset=0    xadvance=15   page=0    chnl=0 \n"	\
-                               "char id=906     x=50   y=197  width=12   height=17   xoffset=-3   yoffset=0    xadvance=8    page=0    chnl=0 \n"	\
-                               "char id=908     x=389  y=144  width=18   height=18   xoffset=-3   yoffset=0    xadvance=13   page=0    chnl=0 \n"	\
-                               "char id=910     x=62   y=197  width=20   height=17   xoffset=-3   yoffset=0    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=911     x=82   y=197  width=18   height=17   xoffset=-3   yoffset=0    xadvance=13   page=0    chnl=0 \n"	\
-                               "char id=912     x=314  y=0    width=10   height=21   xoffset=-2   yoffset=-3   xadvance=6    page=0    chnl=0 \n"	\
-                               "char id=913     x=338  y=265  width=16   height=16   xoffset=-2   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=914     x=354  y=265  width=13   height=16   xoffset=-1   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=915     x=367  y=265  width=12   height=16   xoffset=-1   yoffset=1    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=916     x=379  y=265  width=16   height=16   xoffset=-2   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=917     x=395  y=265  width=12   height=16   xoffset=-1   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=918     x=407  y=265  width=14   height=16   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=919     x=421  y=265  width=14   height=16   xoffset=-1   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=920     x=100  y=197  width=16   height=17   xoffset=-2   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=921     x=435  y=265  width=8    height=16   xoffset=-1   yoffset=1    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=922     x=443  y=265  width=15   height=16   xoffset=-1   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=923     x=458  y=265  width=16   height=16   xoffset=-2   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=924     x=474  y=265  width=16   height=16   xoffset=-1   yoffset=1    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=925     x=490  y=265  width=14   height=16   xoffset=-1   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=926     x=0    y=281  width=11   height=16   xoffset=-1   yoffset=1    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=927     x=116  y=197  width=16   height=17   xoffset=-2   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=928     x=11   y=281  width=14   height=16   xoffset=-1   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=929     x=25   y=281  width=13   height=16   xoffset=-1   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=931     x=38   y=281  width=12   height=16   xoffset=-1   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=932     x=50   y=281  width=14   height=16   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=933     x=64   y=281  width=16   height=16   xoffset=-3   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=934     x=80   y=281  width=16   height=16   xoffset=-2   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=935     x=96   y=281  width=15   height=16   xoffset=-2   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=936     x=111  y=281  width=16   height=16   xoffset=-2   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=937     x=127  y=281  width=16   height=16   xoffset=-2   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=938     x=502  y=87   width=9    height=19   xoffset=-2   yoffset=-2   xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=939     x=472  y=87   width=16   height=19   xoffset=-3   yoffset=-2   xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=940     x=407  y=144  width=14   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=941     x=421  y=144  width=12   height=18   xoffset=-2   yoffset=0    xadvance=8    page=0    chnl=0 \n"	\
-                               "char id=942     x=324  y=0    width=13   height=21   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=943     x=433  y=144  width=9    height=18   xoffset=-1   yoffset=0    xadvance=6    page=0    chnl=0 \n"	\
-                               "char id=944     x=337  y=0    width=13   height=21   xoffset=-1   yoffset=-3   xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=945     x=24   y=345  width=14   height=14   xoffset=-2   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=946     x=350  y=0    width=13   height=21   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=947     x=132  y=197  width=14   height=17   xoffset=-2   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=948     x=442  y=144  width=14   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=949     x=38   y=345  width=12   height=14   xoffset=-2   yoffset=4    xadvance=8    page=0    chnl=0 \n"	\
-                               "char id=950     x=363  y=0    width=12   height=21   xoffset=-2   yoffset=0    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=951     x=146  y=197  width=13   height=17   xoffset=-1   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=952     x=456  y=144  width=14   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=953     x=50   y=345  width=9    height=14   xoffset=-1   yoffset=4    xadvance=6    page=0    chnl=0 \n"	\
-                               "char id=954     x=268  y=359  width=13   height=13   xoffset=-1   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=955     x=159  y=197  width=13   height=17   xoffset=-2   yoffset=0    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=956     x=172  y=197  width=14   height=17   xoffset=-1   yoffset=4    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=957     x=281  y=359  width=14   height=13   xoffset=-2   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=958     x=375  y=0    width=12   height=21   xoffset=-2   yoffset=0    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=959     x=59   y=345  width=14   height=14   xoffset=-2   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=960     x=73   y=345  width=15   height=14   xoffset=-2   yoffset=4    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=961     x=186  y=197  width=13   height=17   xoffset=-1   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=962     x=199  y=197  width=12   height=17   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=963     x=88   y=345  width=15   height=14   xoffset=-2   yoffset=4    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=964     x=103  y=345  width=13   height=14   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=965     x=116  y=345  width=13   height=14   xoffset=-1   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=966     x=211  y=197  width=15   height=17   xoffset=-2   yoffset=4    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=967     x=226  y=197  width=13   height=17   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=968     x=239  y=197  width=15   height=17   xoffset=-2   yoffset=4    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=969     x=129  y=345  width=16   height=14   xoffset=-2   yoffset=4    xadvance=13   page=0    chnl=0 \n"	\
-                               "char id=970     x=470  y=144  width=10   height=18   xoffset=-2   yoffset=0    xadvance=6    page=0    chnl=0 \n"	\
-                               "char id=971     x=480  y=144  width=13   height=18   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=972     x=493  y=144  width=14   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=973     x=0    y=162  width=13   height=18   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=974     x=13   y=162  width=16   height=18   xoffset=-2   yoffset=0    xadvance=13   page=0    chnl=0 \n"	\
-                               "char id=976     x=29   y=162  width=14   height=18   xoffset=-2   yoffset=0    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=977     x=43   y=162  width=13   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=978     x=143  y=281  width=16   height=16   xoffset=-2   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=979     x=254  y=197  width=20   height=17   xoffset=-3   yoffset=0    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=980     x=28   y=106  width=16   height=19   xoffset=-2   yoffset=-2   xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=981     x=387  y=0    width=15   height=21   xoffset=-2   yoffset=0    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=982     x=145  y=345  width=17   height=14   xoffset=-2   yoffset=4    xadvance=13   page=0    chnl=0 \n"	\
-                               "char id=983     x=274  y=197  width=14   height=17   xoffset=-2   yoffset=4    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=984     x=290  y=47   width=16   height=20   xoffset=-2   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=985     x=288  y=197  width=14   height=17   xoffset=-2   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=986     x=306  y=47   width=14   height=20   xoffset=-2   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=987     x=302  y=197  width=12   height=17   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=988     x=159  y=281  width=12   height=16   xoffset=-1   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=989     x=402  y=0    width=12   height=21   xoffset=-3   yoffset=0    xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=990     x=171  y=281  width=14   height=16   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=991     x=314  y=197  width=12   height=17   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=992     x=320  y=47   width=17   height=20   xoffset=-2   yoffset=1    xadvance=13   page=0    chnl=0 \n"	\
-                               "char id=993     x=185  y=281  width=13   height=16   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=994     x=337  y=47   width=20   height=20   xoffset=-2   yoffset=1    xadvance=16   page=0    chnl=0 \n"	\
-                               "char id=995     x=326  y=197  width=16   height=17   xoffset=-2   yoffset=4    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=996     x=357  y=47   width=15   height=20   xoffset=-2   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=997     x=342  y=197  width=14   height=17   xoffset=-2   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=998     x=372  y=47   width=16   height=20   xoffset=-1   yoffset=1    xadvance=13   page=0    chnl=0 \n"	\
-                               "char id=999     x=248  y=329  width=14   height=15   xoffset=-2   yoffset=3    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1000    x=388  y=47   width=14   height=20   xoffset=-2   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1001    x=356  y=197  width=13   height=17   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1002    x=198  y=281  width=15   height=16   xoffset=-2   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1003    x=295  y=359  width=13   height=13   xoffset=-2   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1004    x=56   y=162  width=15   height=18   xoffset=-2   yoffset=0    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1005    x=71   y=162  width=13   height=18   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1006    x=402  y=47   width=14   height=20   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1007    x=416  y=47   width=13   height=20   xoffset=-2   yoffset=1    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1008    x=162  y=345  width=14   height=14   xoffset=-2   yoffset=4    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1009    x=369  y=197  width=13   height=17   xoffset=-1   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1010    x=176  y=345  width=12   height=14   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1011    x=414  y=0    width=9    height=21   xoffset=-3   yoffset=0    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=1012    x=382  y=197  width=16   height=17   xoffset=-2   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1013    x=188  y=345  width=12   height=14   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1014    x=200  y=345  width=12   height=14   xoffset=-1   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1015    x=213  y=281  width=13   height=16   xoffset=-1   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1016    x=423  y=0    width=13   height=21   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1017    x=398  y=197  width=14   height=17   xoffset=-2   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1018    x=226  y=281  width=16   height=16   xoffset=-1   yoffset=1    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=1019    x=412  y=197  width=13   height=17   xoffset=-1   yoffset=4    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1020    x=425  y=197  width=14   height=17   xoffset=-2   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1021    x=439  y=197  width=14   height=17   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1022    x=453  y=197  width=14   height=17   xoffset=-2   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1023    x=467  y=197  width=14   height=17   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1024    x=44   y=106  width=12   height=19   xoffset=-1   yoffset=-2   xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1025    x=56   y=106  width=12   height=19   xoffset=-1   yoffset=-2   xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1026    x=429  y=47   width=16   height=20   xoffset=-2   yoffset=1    xadvance=13   page=0    chnl=0 \n"	\
-                               "char id=1027    x=68   y=106  width=12   height=19   xoffset=-1   yoffset=-2   xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1028    x=481  y=197  width=14   height=17   xoffset=-2   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1029    x=495  y=197  width=13   height=17   xoffset=-1   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1030    x=242  y=281  width=8    height=16   xoffset=-1   yoffset=1    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=1031    x=80   y=106  width=9    height=19   xoffset=-2   yoffset=-2   xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=1032    x=501  y=26   width=10   height=20   xoffset=-3   yoffset=1    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=1033    x=250  y=281  width=20   height=16   xoffset=-2   yoffset=1    xadvance=17   page=0    chnl=0 \n"	\
-                               "char id=1034    x=270  y=281  width=19   height=16   xoffset=-1   yoffset=1    xadvance=16   page=0    chnl=0 \n"	\
-                               "char id=1035    x=289  y=281  width=16   height=16   xoffset=-2   yoffset=1    xadvance=13   page=0    chnl=0 \n"	\
-                               "char id=1036    x=89   y=106  width=15   height=19   xoffset=-1   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1037    x=104  y=106  width=14   height=19   xoffset=-1   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1038    x=118  y=106  width=15   height=19   xoffset=-2   yoffset=-2   xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1039    x=133  y=106  width=14   height=19   xoffset=-1   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1040    x=305  y=281  width=16   height=16   xoffset=-2   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1041    x=321  y=281  width=13   height=16   xoffset=-1   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1042    x=334  y=281  width=13   height=16   xoffset=-1   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1043    x=347  y=281  width=12   height=16   xoffset=-1   yoffset=1    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1044    x=147  y=106  width=16   height=19   xoffset=-2   yoffset=1    xadvance=13   page=0    chnl=0 \n"	\
-                               "char id=1045    x=359  y=281  width=12   height=16   xoffset=-1   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1046    x=371  y=281  width=22   height=16   xoffset=-2   yoffset=1    xadvance=18   page=0    chnl=0 \n"	\
-                               "char id=1047    x=0    y=214  width=14   height=17   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1048    x=393  y=281  width=14   height=16   xoffset=-1   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1049    x=163  y=106  width=14   height=19   xoffset=-1   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1050    x=407  y=281  width=15   height=16   xoffset=-1   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1051    x=422  y=281  width=15   height=16   xoffset=-2   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1052    x=437  y=281  width=16   height=16   xoffset=-1   yoffset=1    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=1053    x=453  y=281  width=14   height=16   xoffset=-1   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1054    x=14   y=214  width=16   height=17   xoffset=-2   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1055    x=467  y=281  width=14   height=16   xoffset=-1   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1056    x=481  y=281  width=13   height=16   xoffset=-1   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1057    x=398  y=197  width=14   height=17   xoffset=-2   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1058    x=494  y=281  width=14   height=16   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1059    x=0    y=297  width=15   height=16   xoffset=-2   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1060    x=15   y=297  width=18   height=16   xoffset=-2   yoffset=1    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=1061    x=33   y=297  width=15   height=16   xoffset=-2   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1062    x=177  y=106  width=16   height=19   xoffset=-1   yoffset=1    xadvance=13   page=0    chnl=0 \n"	\
-                               "char id=1063    x=48   y=297  width=14   height=16   xoffset=-1   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1064    x=62   y=297  width=20   height=16   xoffset=-1   yoffset=1    xadvance=18   page=0    chnl=0 \n"	\
-                               "char id=1065    x=193  y=106  width=22   height=19   xoffset=-1   yoffset=1    xadvance=19   page=0    chnl=0 \n"	\
-                               "char id=1066    x=82   y=297  width=17   height=16   xoffset=-2   yoffset=1    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=1067    x=99   y=297  width=18   height=16   xoffset=-1   yoffset=1    xadvance=15   page=0    chnl=0 \n"	\
-                               "char id=1068    x=117  y=297  width=13   height=16   xoffset=-1   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1069    x=30   y=214  width=14   height=17   xoffset=-2   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1070    x=44   y=214  width=20   height=17   xoffset=-1   yoffset=1    xadvance=17   page=0    chnl=0 \n"	\
-                               "char id=1071    x=130  y=297  width=14   height=16   xoffset=-2   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1072    x=212  y=345  width=13   height=14   xoffset=-2   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1073    x=84   y=162  width=14   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1074    x=308  y=359  width=12   height=13   xoffset=-1   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1075    x=320  y=359  width=11   height=13   xoffset=-1   yoffset=4    xadvance=8    page=0    chnl=0 \n"	\
-                               "char id=1076    x=144  y=297  width=15   height=16   xoffset=-2   yoffset=4    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1077    x=225  y=345  width=14   height=14   xoffset=-2   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1078    x=331  y=359  width=19   height=13   xoffset=-2   yoffset=4    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=1079    x=239  y=345  width=12   height=14   xoffset=-2   yoffset=4    xadvance=8    page=0    chnl=0 \n"	\
-                               "char id=1080    x=350  y=359  width=12   height=13   xoffset=-1   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1081    x=64   y=214  width=12   height=17   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1082    x=362  y=359  width=13   height=13   xoffset=-1   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1083    x=375  y=359  width=14   height=13   xoffset=-2   yoffset=4    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1084    x=389  y=359  width=14   height=13   xoffset=-1   yoffset=4    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1085    x=403  y=359  width=12   height=13   xoffset=-1   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1086    x=251  y=345  width=14   height=14   xoffset=-2   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1087    x=415  y=359  width=12   height=13   xoffset=-1   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1088    x=76   y=214  width=13   height=17   xoffset=-1   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1089    x=265  y=345  width=12   height=14   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1090    x=427  y=359  width=13   height=13   xoffset=-2   yoffset=4    xadvance=8    page=0    chnl=0 \n"	\
-                               "char id=1091    x=89   y=214  width=14   height=17   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1092    x=436  y=0    width=18   height=21   xoffset=-2   yoffset=0    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=1093    x=440  y=359  width=14   height=13   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1094    x=159  y=297  width=14   height=16   xoffset=-1   yoffset=4    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1095    x=454  y=359  width=13   height=13   xoffset=-2   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1096    x=467  y=359  width=17   height=13   xoffset=-1   yoffset=4    xadvance=15   page=0    chnl=0 \n"	\
-                               "char id=1097    x=173  y=297  width=19   height=16   xoffset=-1   yoffset=4    xadvance=16   page=0    chnl=0 \n"	\
-                               "char id=1098    x=484  y=359  width=15   height=13   xoffset=-2   yoffset=4    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1099    x=0    y=373  width=15   height=13   xoffset=-1   yoffset=4    xadvance=13   page=0    chnl=0 \n"	\
-                               "char id=1100    x=499  y=359  width=12   height=13   xoffset=-1   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1101    x=277  y=345  width=12   height=14   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1102    x=289  y=345  width=17   height=14   xoffset=-1   yoffset=4    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=1103    x=15   y=373  width=13   height=13   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1104    x=98   y=162  width=14   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1105    x=112  y=162  width=14   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1106    x=454  y=0    width=14   height=21   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1107    x=103  y=214  width=11   height=17   xoffset=-1   yoffset=0    xadvance=8    page=0    chnl=0 \n"	\
-                               "char id=1108    x=306  y=345  width=12   height=14   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1109    x=318  y=345  width=12   height=14   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1110    x=503  y=180  width=7    height=17   xoffset=-1   yoffset=0    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=1111    x=114  y=214  width=9    height=17   xoffset=-2   yoffset=0    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=1112    x=468  y=0    width=9    height=21   xoffset=-3   yoffset=0    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=1113    x=28   y=373  width=18   height=13   xoffset=-2   yoffset=4    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=1114    x=46   y=373  width=17   height=13   xoffset=-1   yoffset=4    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=1115    x=123  y=214  width=14   height=17   xoffset=-2   yoffset=0    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1116    x=137  y=214  width=13   height=17   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1117    x=150  y=214  width=12   height=17   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1118    x=477  y=0    width=14   height=21   xoffset=-2   yoffset=0    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1119    x=192  y=297  width=12   height=16   xoffset=-1   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1120    x=162  y=214  width=20   height=17   xoffset=-2   yoffset=1    xadvance=16   page=0    chnl=0 \n"	\
-                               "char id=1121    x=330  y=345  width=16   height=14   xoffset=-2   yoffset=4    xadvance=13   page=0    chnl=0 \n"	\
-                               "char id=1122    x=204  y=297  width=16   height=16   xoffset=-2   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1123    x=220  y=297  width=14   height=16   xoffset=-2   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1124    x=182  y=214  width=17   height=17   xoffset=-1   yoffset=1    xadvance=15   page=0    chnl=0 \n"	\
-                               "char id=1125    x=346  y=345  width=14   height=14   xoffset=-1   yoffset=4    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1126    x=234  y=297  width=19   height=16   xoffset=-2   yoffset=1    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=1127    x=63   y=373  width=16   height=13   xoffset=-2   yoffset=4    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1128    x=253  y=297  width=23   height=16   xoffset=-1   yoffset=1    xadvance=20   page=0    chnl=0 \n"	\
-                               "char id=1129    x=79   y=373  width=19   height=13   xoffset=-1   yoffset=4    xadvance=16   page=0    chnl=0 \n"	\
-                               "char id=1130    x=276  y=297  width=16   height=16   xoffset=-2   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1131    x=98   y=373  width=14   height=13   xoffset=-2   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1132    x=292  y=297  width=20   height=16   xoffset=-1   yoffset=1    xadvance=18   page=0    chnl=0 \n"	\
-                               "char id=1133    x=112  y=373  width=17   height=13   xoffset=-1   yoffset=4    xadvance=15   page=0    chnl=0 \n"	\
-                               "char id=1134    x=38   y=0    width=13   height=24   xoffset=-2   yoffset=-3   xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1135    x=491  y=0    width=12   height=21   xoffset=-2   yoffset=0    xadvance=8    page=0    chnl=0 \n"	\
-                               "char id=1136    x=312  y=297  width=20   height=16   xoffset=-2   yoffset=1    xadvance=15   page=0    chnl=0 \n"	\
-                               "char id=1137    x=0    y=26   width=20   height=21   xoffset=-2   yoffset=0    xadvance=15   page=0    chnl=0 \n"	\
-                               "char id=1138    x=199  y=214  width=16   height=17   xoffset=-2   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1139    x=360  y=345  width=14   height=14   xoffset=-2   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1140    x=332  y=297  width=16   height=16   xoffset=-2   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1141    x=129  y=373  width=14   height=13   xoffset=-2   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1142    x=215  y=106  width=16   height=19   xoffset=-2   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1143    x=215  y=214  width=14   height=17   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1144    x=445  y=47   width=21   height=20   xoffset=-2   yoffset=1    xadvance=17   page=0    chnl=0 \n"	\
-                               "char id=1145    x=229  y=214  width=19   height=17   xoffset=-2   yoffset=4    xadvance=15   page=0    chnl=0 \n"	\
-                               "char id=1146    x=248  y=214  width=19   height=17   xoffset=-2   yoffset=1    xadvance=15   page=0    chnl=0 \n"	\
-                               "char id=1147    x=374  y=345  width=16   height=14   xoffset=-2   yoffset=4    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1148    x=466  y=47   width=24   height=20   xoffset=-2   yoffset=-2   xadvance=20   page=0    chnl=0 \n"	\
-                               "char id=1149    x=231  y=106  width=21   height=19   xoffset=-2   yoffset=-1   xadvance=17   page=0    chnl=0 \n"	\
-                               "char id=1150    x=490  y=47   width=20   height=20   xoffset=-2   yoffset=-2   xadvance=16   page=0    chnl=0 \n"	\
-                               "char id=1151    x=267  y=214  width=16   height=17   xoffset=-2   yoffset=1    xadvance=13   page=0    chnl=0 \n"	\
-                               "char id=1152    x=0    y=67   width=14   height=20   xoffset=-2   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1153    x=283  y=214  width=12   height=17   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1154    x=143  y=373  width=12   height=13   xoffset=-2   yoffset=5    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1155    x=135  y=386  width=20   height=9    xoffset=-11  yoffset=-1   xadvance=0    page=0    chnl=0 \n"	\
-                               "char id=1156    x=388  y=386  width=15   height=7    xoffset=-8   yoffset=0    xadvance=0    page=0    chnl=0 \n"	\
-                               "char id=1157    x=247  y=386  width=12   height=8    xoffset=-8   yoffset=0    xadvance=0    page=0    chnl=0 \n"	\
-                               "char id=1158    x=259  y=386  width=12   height=8    xoffset=-8   yoffset=0    xadvance=0    page=0    chnl=0 \n"	\
-                               "char id=1159    x=271  y=386  width=28   height=8    xoffset=-14  yoffset=0    xadvance=0    page=0    chnl=0 \n"	\
-                               "char id=1160    x=79   y=0    width=41   height=22   xoffset=-18  yoffset=-2   xadvance=6    page=0    chnl=0 \n"	\
-                               "char id=1161    x=0    y=0    width=38   height=26   xoffset=-17  yoffset=-4   xadvance=6    page=0    chnl=0 \n"	\
-                               "char id=1162    x=62   y=0    width=17   height=23   xoffset=-1   yoffset=-2   xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=1163    x=20   y=26   width=15   height=21   xoffset=-1   yoffset=0    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1164    x=348  y=297  width=14   height=16   xoffset=-2   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1165    x=362  y=297  width=13   height=16   xoffset=-2   yoffset=1    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1166    x=375  y=297  width=14   height=16   xoffset=-1   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1167    x=295  y=214  width=13   height=17   xoffset=-1   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1168    x=252  y=106  width=12   height=19   xoffset=-1   yoffset=-2   xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1169    x=389  y=297  width=11   height=16   xoffset=-1   yoffset=1    xadvance=8    page=0    chnl=0 \n"	\
-                               "char id=1170    x=400  y=297  width=14   height=16   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1171    x=155  y=373  width=12   height=13   xoffset=-2   yoffset=4    xadvance=8    page=0    chnl=0 \n"	\
-                               "char id=1172    x=14   y=67   width=14   height=20   xoffset=-1   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1173    x=308  y=214  width=12   height=17   xoffset=-1   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1174    x=264  y=106  width=22   height=19   xoffset=-2   yoffset=1    xadvance=18   page=0    chnl=0 \n"	\
-                               "char id=1175    x=414  y=297  width=19   height=16   xoffset=-2   yoffset=4    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=1176    x=28   y=67   width=14   height=20   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1177    x=320  y=214  width=12   height=17   xoffset=-2   yoffset=4    xadvance=8    page=0    chnl=0 \n"	\
-                               "char id=1178    x=286  y=106  width=15   height=19   xoffset=-1   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1179    x=433  y=297  width=13   height=16   xoffset=-1   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1180    x=446  y=297  width=15   height=16   xoffset=-1   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1181    x=167  y=373  width=13   height=13   xoffset=-1   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1182    x=461  y=297  width=16   height=16   xoffset=-2   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1183    x=332  y=214  width=14   height=17   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1184    x=477  y=297  width=19   height=16   xoffset=-2   yoffset=1    xadvance=15   page=0    chnl=0 \n"	\
-                               "char id=1185    x=180  y=373  width=16   height=13   xoffset=-2   yoffset=4    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1186    x=301  y=106  width=17   height=19   xoffset=-1   yoffset=1    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=1187    x=496  y=297  width=15   height=16   xoffset=-1   yoffset=4    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1188    x=0    y=313  width=19   height=16   xoffset=-1   yoffset=1    xadvance=16   page=0    chnl=0 \n"	\
-                               "char id=1189    x=196  y=373  width=16   height=13   xoffset=-1   yoffset=4    xadvance=13   page=0    chnl=0 \n"	\
-                               "char id=1190    x=42   y=67   width=21   height=20   xoffset=-1   yoffset=1    xadvance=18   page=0    chnl=0 \n"	\
-                               "char id=1191    x=346  y=214  width=17   height=17   xoffset=-1   yoffset=4    xadvance=15   page=0    chnl=0 \n"	\
-                               "char id=1192    x=363  y=214  width=18   height=17   xoffset=-2   yoffset=1    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=1193    x=390  y=345  width=17   height=14   xoffset=-2   yoffset=4    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1194    x=63   y=67   width=14   height=20   xoffset=-2   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1195    x=381  y=214  width=12   height=17   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1196    x=318  y=106  width=14   height=19   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1197    x=19   y=313  width=13   height=16   xoffset=-2   yoffset=4    xadvance=8    page=0    chnl=0 \n"	\
-                               "char id=1198    x=32   y=313  width=16   height=16   xoffset=-3   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1199    x=393  y=214  width=14   height=17   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1200    x=48   y=313  width=16   height=16   xoffset=-3   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1201    x=407  y=214  width=14   height=17   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1202    x=332  y=106  width=15   height=19   xoffset=-2   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1203    x=64   y=313  width=14   height=16   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1204    x=347  y=106  width=20   height=19   xoffset=-2   yoffset=1    xadvance=16   page=0    chnl=0 \n"	\
-                               "char id=1205    x=78   y=313  width=19   height=16   xoffset=-2   yoffset=4    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=1206    x=367  y=106  width=18   height=19   xoffset=-1   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1207    x=97   y=313  width=15   height=16   xoffset=-2   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1208    x=112  y=313  width=14   height=16   xoffset=-1   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1209    x=212  y=373  width=13   height=13   xoffset=-2   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1210    x=126  y=313  width=14   height=16   xoffset=-1   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1211    x=421  y=214  width=13   height=17   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1212    x=434  y=214  width=19   height=17   xoffset=-2   yoffset=1    xadvance=15   page=0    chnl=0 \n"	\
-                               "char id=1213    x=407  y=345  width=15   height=14   xoffset=-2   yoffset=4    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1214    x=385  y=106  width=19   height=19   xoffset=-2   yoffset=1    xadvance=15   page=0    chnl=0 \n"	\
-                               "char id=1215    x=140  y=313  width=15   height=16   xoffset=-2   yoffset=4    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1216    x=155  y=313  width=8    height=16   xoffset=-1   yoffset=1    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=1217    x=404  y=106  width=22   height=19   xoffset=-2   yoffset=-2   xadvance=18   page=0    chnl=0 \n"	\
-                               "char id=1218    x=453  y=214  width=19   height=17   xoffset=-2   yoffset=0    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=1219    x=77   y=67   width=15   height=20   xoffset=-1   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1220    x=472  y=214  width=13   height=17   xoffset=-1   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1221    x=92   y=67   width=18   height=20   xoffset=-2   yoffset=1    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=1222    x=485  y=214  width=16   height=17   xoffset=-2   yoffset=4    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1223    x=110  y=67   width=14   height=20   xoffset=-1   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1224    x=0    y=231  width=12   height=17   xoffset=-1   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1225    x=124  y=67   width=17   height=20   xoffset=-1   yoffset=1    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=1226    x=12   y=231  width=15   height=17   xoffset=-1   yoffset=4    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1227    x=426  y=106  width=14   height=19   xoffset=-1   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1228    x=163  y=313  width=13   height=16   xoffset=-2   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1229    x=141  y=67   width=19   height=20   xoffset=-1   yoffset=1    xadvance=16   page=0    chnl=0 \n"	\
-                               "char id=1230    x=27   y=231  width=17   height=17   xoffset=-1   yoffset=4    xadvance=13   page=0    chnl=0 \n"	\
-                               "char id=1231    x=501  y=214  width=7    height=17   xoffset=-1   yoffset=0    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=1232    x=440  y=106  width=16   height=19   xoffset=-2   yoffset=-2   xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1233    x=126  y=162  width=13   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1234    x=456  y=106  width=16   height=19   xoffset=-2   yoffset=-2   xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1235    x=139  y=162  width=13   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1236    x=176  y=313  width=19   height=16   xoffset=-2   yoffset=1    xadvance=16   page=0    chnl=0 \n"	\
-                               "char id=1237    x=422  y=345  width=19   height=14   xoffset=-2   yoffset=4    xadvance=15   page=0    chnl=0 \n"	\
-                               "char id=1238    x=472  y=106  width=12   height=19   xoffset=-1   yoffset=-2   xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1239    x=152  y=162  width=14   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1240    x=44   y=231  width=16   height=17   xoffset=-2   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1241    x=441  y=345  width=14   height=14   xoffset=-2   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1242    x=160  y=67   width=16   height=20   xoffset=-2   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1243    x=166  y=162  width=14   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1244    x=484  y=106  width=22   height=19   xoffset=-2   yoffset=-2   xadvance=18   page=0    chnl=0 \n"	\
-                               "char id=1245    x=60   y=231  width=19   height=17   xoffset=-2   yoffset=0    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=1246    x=176  y=67   width=14   height=20   xoffset=-2   yoffset=-2   xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1247    x=180  y=162  width=12   height=18   xoffset=-2   yoffset=0    xadvance=8    page=0    chnl=0 \n"	\
-                               "char id=1248    x=79   y=231  width=14   height=17   xoffset=-1   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1249    x=93   y=231  width=13   height=17   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1250    x=0    y=125  width=14   height=19   xoffset=-1   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1251    x=106  y=231  width=12   height=17   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1252    x=14   y=125  width=14   height=19   xoffset=-1   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1253    x=118  y=231  width=12   height=17   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1254    x=190  y=67   width=16   height=20   xoffset=-2   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1255    x=192  y=162  width=14   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1256    x=130  y=231  width=16   height=17   xoffset=-2   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1257    x=455  y=345  width=14   height=14   xoffset=-2   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1258    x=206  y=67   width=16   height=20   xoffset=-2   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1259    x=206  y=162  width=14   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1260    x=222  y=67   width=14   height=20   xoffset=-2   yoffset=-2   xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1261    x=220  y=162  width=12   height=18   xoffset=-2   yoffset=0    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1262    x=28   y=125  width=15   height=19   xoffset=-2   yoffset=-2   xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1263    x=35   y=26   width=14   height=21   xoffset=-2   yoffset=0    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1264    x=43   y=125  width=15   height=19   xoffset=-2   yoffset=-2   xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1265    x=49   y=26   width=14   height=21   xoffset=-2   yoffset=0    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1266    x=58   y=125  width=15   height=19   xoffset=-2   yoffset=-2   xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1267    x=63   y=26   width=14   height=21   xoffset=-2   yoffset=0    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1268    x=73   y=125  width=14   height=19   xoffset=-1   yoffset=-2   xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1269    x=146  y=231  width=13   height=17   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1270    x=87   y=125  width=12   height=19   xoffset=-1   yoffset=1    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1271    x=195  y=313  width=11   height=16   xoffset=-1   yoffset=4    xadvance=8    page=0    chnl=0 \n"	\
-                               "char id=1272    x=99   y=125  width=18   height=19   xoffset=-1   yoffset=-2   xadvance=15   page=0    chnl=0 \n"	\
-                               "char id=1273    x=159  y=231  width=15   height=17   xoffset=-1   yoffset=0    xadvance=13   page=0    chnl=0 \n"	\
-                               "char id=1274    x=236  y=67   width=14   height=20   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1275    x=174  y=231  width=12   height=17   xoffset=-2   yoffset=4    xadvance=8    page=0    chnl=0 \n"	\
-                               "char id=1276    x=250  y=67   width=15   height=20   xoffset=-2   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1277    x=186  y=231  width=13   height=17   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1278    x=206  y=313  width=15   height=16   xoffset=-2   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1279    x=225  y=373  width=14   height=13   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1280    x=221  y=313  width=13   height=16   xoffset=-1   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1281    x=239  y=373  width=12   height=13   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1282    x=199  y=231  width=19   height=17   xoffset=-1   yoffset=1    xadvance=17   page=0    chnl=0 \n"	\
-                               "char id=1283    x=469  y=345  width=17   height=14   xoffset=-2   yoffset=4    xadvance=13   page=0    chnl=0 \n"	\
-                               "char id=1284    x=218  y=231  width=18   height=17   xoffset=-1   yoffset=1    xadvance=16   page=0    chnl=0 \n"	\
-                               "char id=1285    x=486  y=345  width=16   height=14   xoffset=-1   yoffset=4    xadvance=13   page=0    chnl=0 \n"	\
-                               "char id=1286    x=265  y=67   width=15   height=20   xoffset=-1   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1287    x=236  y=231  width=13   height=17   xoffset=-1   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1288    x=249  y=231  width=21   height=17   xoffset=-2   yoffset=1    xadvance=18   page=0    chnl=0 \n"	\
-                               "char id=1289    x=0    y=359  width=18   height=14   xoffset=-2   yoffset=4    xadvance=15   page=0    chnl=0 \n"	\
-                               "char id=1290    x=270  y=231  width=21   height=17   xoffset=-1   yoffset=1    xadvance=19   page=0    chnl=0 \n"	\
-                               "char id=1291    x=18   y=359  width=17   height=14   xoffset=-1   yoffset=4    xadvance=15   page=0    chnl=0 \n"	\
-                               "char id=1292    x=291  y=231  width=15   height=17   xoffset=-2   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1293    x=35   y=359  width=12   height=14   xoffset=-2   yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=1294    x=306  y=231  width=17   height=17   xoffset=-2   yoffset=1    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=1295    x=47   y=359  width=15   height=14   xoffset=-2   yoffset=4    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1296    x=323  y=231  width=13   height=17   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1297    x=62   y=359  width=12   height=14   xoffset=-2   yoffset=4    xadvance=8    page=0    chnl=0 \n"	\
-                               "char id=1298    x=280  y=67   width=15   height=20   xoffset=-2   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1299    x=336  y=231  width=14   height=17   xoffset=-2   yoffset=4    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=1300    x=234  y=313  width=23   height=16   xoffset=-2   yoffset=1    xadvance=19   page=0    chnl=0 \n"	\
-                               "char id=1301    x=251  y=373  width=20   height=13   xoffset=-2   yoffset=4    xadvance=15   page=0    chnl=0 \n"	\
-                               "char id=1302    x=257  y=313  width=19   height=16   xoffset=-1   yoffset=1    xadvance=15   page=0    chnl=0 \n"	\
-                               "char id=1303    x=350  y=231  width=17   height=17   xoffset=-1   yoffset=4    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=1304    x=276  y=313  width=19   height=16   xoffset=-2   yoffset=1    xadvance=16   page=0    chnl=0 \n"	\
-                               "char id=1305    x=74   y=359  width=18   height=14   xoffset=-2   yoffset=4    xadvance=15   page=0    chnl=0 \n"	\
-                               "char id=1306    x=117  y=125  width=16   height=19   xoffset=-2   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1307    x=367  y=231  width=14   height=17   xoffset=-2   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1308    x=295  y=313  width=20   height=16   xoffset=-2   yoffset=1    xadvance=16   page=0    chnl=0 \n"	\
-                               "char id=1309    x=271  y=373  width=17   height=13   xoffset=-2   yoffset=4    xadvance=13   page=0    chnl=0 \n"	\
-                               "char id=1310    x=315  y=313  width=15   height=16   xoffset=-1   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=1311    x=288  y=373  width=13   height=13   xoffset=-1   yoffset=4    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=1312    x=295  y=67   width=22   height=20   xoffset=-2   yoffset=1    xadvance=18   page=0    chnl=0 \n"	\
-                               "char id=1313    x=381  y=231  width=19   height=17   xoffset=-2   yoffset=4    xadvance=15   page=0    chnl=0 \n"	\
-                               "char id=1314    x=317  y=67   width=21   height=20   xoffset=-1   yoffset=1    xadvance=18   page=0    chnl=0 \n"	\
-                               "char id=1315    x=400  y=231  width=17   height=17   xoffset=-1   yoffset=4    xadvance=15   page=0    chnl=0 \n"	\
-                               "char id=1316    x=133  y=125  width=17   height=19   xoffset=-1   yoffset=1    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=1317    x=330  y=313  width=15   height=16   xoffset=-1   yoffset=4    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=8192    x=0    y=0    width=0    height=0    xoffset=-2   yoffset=0    xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=8193    x=0    y=0    width=0    height=0    xoffset=-2   yoffset=0    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=8194    x=0    y=0    width=0    height=0    xoffset=-2   yoffset=0    xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=8195    x=0    y=0    width=0    height=0    xoffset=-2   yoffset=0    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=8196    x=0    y=0    width=0    height=0    xoffset=-2   yoffset=0    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=8197    x=0    y=0    width=0    height=0    xoffset=-2   yoffset=0    xadvance=4    page=0    chnl=0 \n"	\
-                               "char id=8198    x=0    y=0    width=0    height=0    xoffset=-2   yoffset=0    xadvance=2    page=0    chnl=0 \n"	\
-                               "char id=8199    x=0    y=0    width=0    height=0    xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=8200    x=0    y=0    width=0    height=0    xoffset=-2   yoffset=0    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=8201    x=0    y=0    width=0    height=0    xoffset=-2   yoffset=0    xadvance=3    page=0    chnl=0 \n"	\
-                               "char id=8202    x=0    y=0    width=0    height=0    xoffset=-2   yoffset=0    xadvance=1    page=0    chnl=0 \n"	\
-                               "char id=8203    x=0    y=0    width=0    height=0    xoffset=-2   yoffset=0    xadvance=0    page=0    chnl=0 \n"	\
-                               "char id=8204    x=0    y=0    width=0    height=0    xoffset=-2   yoffset=0    xadvance=0    page=0    chnl=0 \n"	\
-                               "char id=8210    x=403  y=386  width=14   height=7    xoffset=-2   yoffset=7    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=8211    x=417  y=386  width=11   height=7    xoffset=-2   yoffset=7    xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=8212    x=428  y=386  width=18   height=7    xoffset=-2   yoffset=7    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=8213    x=446  y=386  width=19   height=7    xoffset=-2   yoffset=7    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=8214    x=77   y=26   width=9    height=21   xoffset=-1   yoffset=0    xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=8215    x=299  y=386  width=12   height=8    xoffset=-2   yoffset=13   xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=8216    x=10   y=386  width=8    height=10   xoffset=-1   yoffset=1    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=8217    x=18   y=386  width=8    height=10   xoffset=-2   yoffset=1    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=8218    x=26   y=386  width=8    height=10   xoffset=-1   yoffset=9    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=8219    x=34   y=386  width=8    height=10   xoffset=-2   yoffset=1    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=8220    x=42   y=386  width=12   height=10   xoffset=-1   yoffset=1    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=8221    x=54   y=386  width=11   height=10   xoffset=-1   yoffset=1    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=8222    x=65   y=386  width=11   height=10   xoffset=-1   yoffset=9    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=8223    x=76   y=386  width=11   height=10   xoffset=-1   yoffset=1    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=8224    x=232  y=162  width=11   height=18   xoffset=-2   yoffset=1    xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=8225    x=243  y=162  width=11   height=18   xoffset=-2   yoffset=1    xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=8226    x=87   y=386  width=10   height=10   xoffset=0    yoffset=4    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=8230    x=311  y=386  width=17   height=8    xoffset=-1   yoffset=9    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=8239    x=0    y=0    width=0    height=0    xoffset=-2   yoffset=0    xadvance=3    page=0    chnl=0 \n"	\
-                               "char id=8240    x=417  y=231  width=25   height=17   xoffset=-2   yoffset=1    xadvance=21   page=0    chnl=0 \n"	\
-                               "char id=8242    x=328  y=386  width=8    height=8    xoffset=-2   yoffset=1    xadvance=4    page=0    chnl=0 \n"	\
-                               "char id=8243    x=336  y=386  width=11   height=8    xoffset=-2   yoffset=1    xadvance=6    page=0    chnl=0 \n"	\
-                               "char id=8244    x=347  y=386  width=13   height=8    xoffset=-2   yoffset=1    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=8249    x=397  y=373  width=8    height=12   xoffset=-1   yoffset=4    xadvance=6    page=0    chnl=0 \n"	\
-                               "char id=8250    x=405  y=373  width=8    height=12   xoffset=-1   yoffset=4    xadvance=6    page=0    chnl=0 \n"	\
-                               "char id=8252    x=345  y=313  width=11   height=16   xoffset=-1   yoffset=1    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=8254    x=465  y=386  width=12   height=6    xoffset=-2   yoffset=1    xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=8260    x=442  y=231  width=18   height=17   xoffset=-5   yoffset=1    xadvance=2    page=0    chnl=0 \n"	\
-                               "char id=8286    x=504  y=265  width=7    height=15   xoffset=-1   yoffset=2    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=8352    x=356  y=313  width=17   height=16   xoffset=-2   yoffset=1    xadvance=13   page=0    chnl=0 \n"	\
-                               "char id=8353    x=254  y=162  width=14   height=18   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=8354    x=460  y=231  width=14   height=17   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=8355    x=373  y=313  width=13   height=16   xoffset=-1   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=8356    x=386  y=313  width=13   height=16   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=8357    x=474  y=231  width=17   height=17   xoffset=-1   yoffset=2    xadvance=15   page=0    chnl=0 \n"	\
-                               "char id=8358    x=399  y=313  width=14   height=16   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=8359    x=0    y=248  width=25   height=17   xoffset=-1   yoffset=1    xadvance=22   page=0    chnl=0 \n"	\
-                               "char id=8360    x=491  y=231  width=20   height=17   xoffset=-1   yoffset=1    xadvance=17   page=0    chnl=0 \n"	\
-                               "char id=8361    x=413  y=313  width=20   height=16   xoffset=-2   yoffset=1    xadvance=16   page=0    chnl=0 \n"	\
-                               "char id=8363    x=86   y=26   width=15   height=21   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=8364    x=25   y=248  width=15   height=17   xoffset=-3   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=8365    x=433  y=313  width=15   height=16   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=8366    x=448  y=313  width=14   height=16   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=8367    x=338  y=67   width=21   height=20   xoffset=-1   yoffset=1    xadvance=20   page=0    chnl=0 \n"	\
-                               "char id=8368    x=40   y=248  width=14   height=17   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=8369    x=462  y=313  width=15   height=16   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=8370    x=150  y=125  width=14   height=19   xoffset=-2   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=8371    x=477  y=313  width=14   height=16   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=8372    x=54   y=248  width=16   height=17   xoffset=-2   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=8373    x=359  y=67   width=13   height=20   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=8377    x=491  y=313  width=14   height=16   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=8378    x=0    y=329  width=14   height=16   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=8482    x=155  y=386  width=14   height=9    xoffset=0    yoffset=1    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=8710    x=102  y=329  width=15   height=16   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=9167    x=106  y=359  width=16   height=14   xoffset=-1   yoffset=3    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=9632    x=128  y=248  width=16   height=17   xoffset=-1   yoffset=2    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=9633    x=176  y=248  width=16   height=17   xoffset=-1   yoffset=2    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=9635    x=192  y=248  width=16   height=17   xoffset=-1   yoffset=2    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=9650    x=160  y=248  width=16   height=17   xoffset=-2   yoffset=2    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=9654    x=96   y=248  width=16   height=17   xoffset=-2   yoffset=2    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=9660    x=144  y=248  width=16   height=17   xoffset=-2   yoffset=2    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=9664    x=112  y=248  width=16   height=17   xoffset=-2   yoffset=2    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=9733    x=208  y=248  width=16   height=17   xoffset=-2   yoffset=1    xadvance=13   page=0    chnl=0 \n"	\
-                               "char id=9734    x=224  y=248  width=16   height=17   xoffset=-2   yoffset=1    xadvance=13   page=0    chnl=0 \n"	\
-                               "char id=9744    x=161  y=329  width=15   height=16   xoffset=-1   yoffset=1    xadvance=13   page=0    chnl=0 \n"	\
-                               "char id=9745    x=176  y=329  width=15   height=16   xoffset=-1   yoffset=1    xadvance=13   page=0    chnl=0 \n"	\
-                               "char id=9746    x=191  y=329  width=15   height=16   xoffset=-1   yoffset=1    xadvance=13   page=0    chnl=0 \n"	\
-                               "char id=9775    x=133  y=329  width=15   height=16   xoffset=-1   yoffset=1    xadvance=13   page=0    chnl=0 \n"	\
-                               "char id=9785    x=230  y=125  width=17   height=19   xoffset=-1   yoffset=0    xadvance=15   page=0    chnl=0 \n"	\
-                               "char id=9786    x=213  y=125  width=17   height=19   xoffset=-1   yoffset=0    xadvance=15   page=0    chnl=0 \n"	\
-                               "char id=9873    x=148  y=329  width=13   height=16   xoffset=0    yoffset=1    xadvance=13   page=0    chnl=0 \n"	\
-                               "char id=9986    x=413  y=373  width=16   height=12   xoffset=-2   yoffset=3    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=9992    x=117  y=329  width=16   height=16   xoffset=-2   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=9997    x=122  y=359  width=16   height=14   xoffset=-2   yoffset=2    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=9998    x=276  y=329  width=14   height=15   xoffset=-1   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=10003   x=138  y=359  width=12   height=14   xoffset=0    yoffset=2    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=10007   x=240  y=248  width=14   height=17   xoffset=-1   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=11360   x=14   y=329  width=13   height=16   xoffset=-2   yoffset=1    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=11361   x=70   y=248  width=10   height=17   xoffset=-2   yoffset=0    xadvance=5    page=0    chnl=0 \n"	\
-                               "char id=11362   x=27   y=329  width=14   height=16   xoffset=-3   yoffset=1    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=11363   x=41   y=329  width=14   height=16   xoffset=-2   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=11364   x=372  y=67   width=14   height=20   xoffset=-1   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=11365   x=262  y=329  width=14   height=15   xoffset=-2   yoffset=3    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=11366   x=386  y=67   width=11   height=20   xoffset=-2   yoffset=-1   xadvance=7    page=0    chnl=0 \n"	\
-                               "char id=11367   x=164  y=125  width=17   height=19   xoffset=-1   yoffset=1    xadvance=14   page=0    chnl=0 \n"	\
-                               "char id=11368   x=397  y=67   width=16   height=20   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=11369   x=181  y=125  width=15   height=19   xoffset=-1   yoffset=1    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=11370   x=413  y=67   width=13   height=20   xoffset=-1   yoffset=0    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=11371   x=196  y=125  width=17   height=19   xoffset=-2   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=11372   x=55   y=329  width=13   height=16   xoffset=-2   yoffset=4    xadvance=8    page=0    chnl=0 \n"	\
-                               "char id=11373   x=80   y=248  width=16   height=17   xoffset=-2   yoffset=1    xadvance=12   page=0    chnl=0 \n"	\
-                               "char id=11377   x=301  y=373  width=16   height=13   xoffset=-2   yoffset=4    xadvance=11   page=0    chnl=0 \n"	\
-                               "char id=11378   x=68   y=329  width=22   height=16   xoffset=-2   yoffset=1    xadvance=18   page=0    chnl=0 \n"	\
-                               "char id=11379   x=317  y=373  width=20   height=13   xoffset=-2   yoffset=4    xadvance=15   page=0    chnl=0 \n"	\
-                               "char id=11380   x=92   y=359  width=14   height=14   xoffset=-2   yoffset=3    xadvance=9    page=0    chnl=0 \n"	\
-                               "char id=11381   x=90   y=329  width=12   height=16   xoffset=-1   yoffset=1    xadvance=10   page=0    chnl=0 \n"	\
-                               "char id=11382   x=337  y=373  width=10   height=13   xoffset=-1   yoffset=4    xadvance=8    page=0    chnl=0 \n"	\
-                               "char id=11383   x=347  y=373  width=15   height=13   xoffset=-2   yoffset=4    xadvance=11   page=0    chnl=0 \n"	\
+                               "ch id=0       426  67   12   19   -2   1    9    0    0 \nch id=13      0    0    0    0    -2   0    0    0    0 \nch id=32      0    0    0    0    -2   0    5    0    0 \nch id=33      254  248  7    16   0    1    7    0    0 \n"	\
+                               "ch id=34      97   386  10   9    -1   1    8    0    0 \nch id=35      261  248  16   16   -2   1    12   0    0 \nch id=36      101  26   13   20   -1   0    10   0    0 \nch id=37      268  162  18   17   -2   1    14   0    0 \n"	\
+                               "ch id=38      286  162  16   17   -2   1    13   0    0 \nch id=39      504  373  7    9    -1   1    4    0    0 \nch id=40      114  26   9    20   -1   0    7    0    0 \nch id=41      123  26   9    20   -1   0    7    0    0 \n"	\
+                               "ch id=42      362  373  12   12   -2   1    8    0    0 \nch id=43      206  329  14   15   -1   2    12   0    0 \nch id=44      429  373  8    11   -2   9    5    0    0 \nch id=45      360  386  10   7    -2   7    6    0    0 \n"	\
+                               "ch id=46      169  386  7    8    -1   9    5    0    0 \nch id=47      247  125  10   18   -2   1    5    0    0 \nch id=48      302  162  14   17   -2   1    10   0    0 \nch id=49      277  248  13   16   -1   1    10   0    0 \n"	\
+                               "ch id=50      290  248  12   16   -1   1    10   0    0 \nch id=51      316  162  13   17   -2   1    10   0    0 \nch id=52      302  248  14   16   -2   1    10   0    0 \nch id=53      329  162  13   17   -1   1    10   0    0 \n"	\
+                               "ch id=54      342  162  14   17   -2   1    10   0    0 \nch id=55      316  248  13   16   -2   1    10   0    0 \nch id=56      356  162  14   17   -2   1    10   0    0 \nch id=57      370  162  14   17   -2   1    10   0    0 \n"	\
+                               "ch id=58      502  345  8    13   -1   4    6    0    0 \nch id=59      329  248  9    16   -2   4    6    0    0 \nch id=60      290  329  14   14   -1   3    12   0    0 \nch id=61      467  373  14   10   -1   5    12   0    0 \n"	\
+                               "ch id=62      304  329  14   14   -1   3    12   0    0 \nch id=63      338  248  11   16   -1   1    8    0    0 \nch id=64      438  67   18   19   -2   1    14   0    0 \nch id=65      349  248  16   16   -2   1    11   0    0 \n"	\
+                               "ch id=66      365  248  13   16   -1   1    11   0    0 \nch id=67      384  162  14   17   -2   1    11   0    0 \nch id=68      378  248  15   16   -1   1    12   0    0 \nch id=69      393  248  12   16   -1   1    10   0    0 \n"	\
+                               "ch id=70      405  248  12   16   -1   1    10   0    0 \nch id=71      398  162  15   17   -2   1    12   0    0 \nch id=72      417  248  14   16   -1   1    12   0    0 \nch id=73      431  248  8    16   -1   1    5    0    0 \n"	\
+                               "ch id=74      132  26   10   20   -3   1    5    0    0 \nch id=75      439  248  15   16   -1   1    11   0    0 \nch id=76      454  248  12   16   -1   1    9    0    0 \nch id=77      466  248  16   16   -1   1    14   0    0 \n"	\
+                               "ch id=78      482  248  14   16   -1   1    12   0    0 \nch id=79      413  162  16   17   -2   1    12   0    0 \nch id=80      496  248  13   16   -1   1    11   0    0 \nch id=81      456  67   16   19   -2   1    12   0    0 \n"	\
+                               "ch id=82      0    265  14   16   -1   1    11   0    0 \nch id=83      429  162  13   17   -1   1    10   0    0 \nch id=84      14   265  14   16   -2   1    10   0    0 \nch id=85      442  162  14   17   -1   1    12   0    0 \n"	\
+                               "ch id=86      28   265  16   16   -2   1    11   0    0 \nch id=87      44   265  20   16   -2   1    16   0    0 \nch id=88      64   265  15   16   -2   1    11   0    0 \nch id=89      79   265  16   16   -3   1    10   0    0 \n"	\
+                               "ch id=90      95   265  14   16   -2   1    10   0    0 \nch id=91      142  26   9    20   -1   0    7    0    0 \nch id=92      257  125  10   18   -2   1    5    0    0 \nch id=93      151  26   10   20   -2   0    7    0    0 \n"	\
+                               "ch id=94      107  386  14   9    -1   1    12   0    0 \nch id=95      465  386  12   6    -2   15   7    0    0 \nch id=96      176  386  9    8    -2   0    7    0    0 \nch id=97      318  329  13   14   -2   4    10   0    0 \n"	\
+                               "ch id=98      267  125  13   18   -1   0    10   0    0 \nch id=99      331  329  12   14   -2   4    9    0    0 \nch id=100     280  125  14   18   -2   0    10   0    0 \nch id=101     343  329  14   14   -2   4    10   0    0 \n"	\
+                               "ch id=102     456  162  11   17   -2   0    6    0    0 \nch id=103     467  162  14   17   -2   4    10   0    0 \nch id=104     481  162  13   17   -1   0    10   0    0 \nch id=105     494  162  7    17   -1   0    5    0    0 \n"	\
+                               "ch id=106     120  0    9    21   -3   0    5    0    0 \nch id=107     0    180  13   17   -1   0    10   0    0 \nch id=108     501  162  7    17   -1   0    5    0    0 \nch id=109     150  359  17   13   -1   4    15   0    0 \n"	\
+                               "ch id=110     167  359  13   13   -1   4    10   0    0 \nch id=111     357  329  14   14   -2   4    10   0    0 \nch id=112     13   180  13   17   -1   4    10   0    0 \nch id=113     26   180  14   17   -2   4    10   0    0 \n"	\
+                               "ch id=114     180  359  11   13   -1   4    7    0    0 \nch id=115     371  329  12   14   -2   4    9    0    0 \nch id=116     109  265  11   16   -2   1    7    0    0 \nch id=117     383  329  13   14   -1   4    10   0    0 \n"	\
+                               "ch id=118     191  359  14   13   -2   4    9    0    0 \nch id=119     205  359  17   13   -2   4    13   0    0 \nch id=120     222  359  14   13   -2   4    9    0    0 \nch id=121     40   180  14   17   -2   4    9    0    0 \n"	\
+                               "ch id=122     236  359  12   13   -2   4    8    0    0 \nch id=123     161  26   12   20   -1   0    10   0    0 \nch id=124     129  0    7    21   -1   0    5    0    0 \nch id=125     173  26   12   20   -1   0    10   0    0 \n"	\
+                               "ch id=126     185  386  14   8    -1   6    12   0    0 \nch id=160     0    0    0    0    -2   0    5    0    0 \nch id=161     120  265  7    16   0    4    7    0    0 \nch id=162     472  67   12   19   -1   1    10   0    0 \n"	\
+                               "ch id=163     127  265  13   16   -2   1    10   0    0 \nch id=164     396  329  13   14   -2   3    9    0    0 \nch id=165     140  265  14   16   -2   1    10   0    0 \nch id=166     503  0    7    19   -1   1    5    0    0 \n"	\
+                               "ch id=167     294  125  12   18   -2   1    7    0    0 \nch id=168     370  386  9    7    -1   0    7    0    0 \nch id=169     154  265  15   16   0    1    14   0    0 \nch id=170     409  329  11   14   -1   1    8    0    0 \n"	\
+                               "ch id=171     374  373  11   12   -1   4    9    0    0 \nch id=172     481  373  14   10   -1   5    12   0    0 \nch id=173     360  386  10   7    -2   7    6    0    0 \nch id=174     169  265  15   16   0    1    14   0    0 \n"	\
+                               "ch id=175     379  386  9    7    -1   0    7    0    0 \nch id=176     495  373  9    10   -1   1    7    0    0 \nch id=177     220  329  14   15   -1   2    12   0    0 \nch id=178     437  373  10   11   -2   1    6    0    0 \n"	\
+                               "ch id=179     447  373  10   11   -2   1    6    0    0 \nch id=180     199  386  9    8    0    0    7    0    0 \nch id=181     54   180  14   17   -1   4    11   0    0 \nch id=182     306  125  12   18   -2   1    9    0    0 \n"	\
+                               "ch id=183     208  386  7    8    -1   5    5    0    0 \nch id=184     215  386  9    8    -1   13   7    0    0 \nch id=185     457  373  10   11   -2   1    6    0    0 \nch id=186     420  329  12   14   -2   1    8    0    0 \n"	\
+                               "ch id=187     385  373  12   12   -1   4    9    0    0 \nch id=188     68   180  18   17   -2   1    15   0    0 \nch id=189     86   180  19   17   -2   1    15   0    0 \nch id=190     105  180  18   17   -2   1    15   0    0 \n"	\
+                               "ch id=191     123  180  11   17   -1   4    8    0    0 \nch id=192     484  67   16   19   -2   -2   11   0    0 \nch id=193     0    87   16   19   -2   -2   11   0    0 \nch id=194     16   87   16   19   -2   -2   11   0    0 \n"	\
+                               "ch id=195     32   87   16   19   -2   -2   11   0    0 \nch id=196     48   87   16   19   -2   -2   11   0    0 \nch id=197     64   87   16   19   -2   -2   11   0    0 \nch id=198     184  265  19   16   -2   1    16   0    0 \n"	\
+                               "ch id=199     185  26   14   20   -2   1    11   0    0 \nch id=200     80   87   12   19   -1   -2   10   0    0 \nch id=201     92   87   12   19   -1   -2   10   0    0 \nch id=202     104  87   12   19   -1   -2   10   0    0 \n"	\
+                               "ch id=203     116  87   12   19   -1   -2   10   0    0 \nch id=204     500  67   9    19   -2   -2   5    0    0 \nch id=205     128  87   8    19   -1   -2   5    0    0 \nch id=206     136  87   11   19   -3   -2   5    0    0 \n"	\
+                               "ch id=207     147  87   9    19   -2   -2   5    0    0 \nch id=208     203  265  16   16   -2   1    12   0    0 \nch id=209     156  87   14   19   -1   -2   12   0    0 \nch id=210     199  26   16   20   -2   -2   12   0    0 \n"	\
+                               "ch id=211     215  26   16   20   -2   -2   12   0    0 \nch id=212     231  26   16   20   -2   -2   12   0    0 \nch id=213     247  26   16   20   -2   -2   12   0    0 \nch id=214     263  26   16   20   -2   -2   12   0    0 \n"	\
+                               "ch id=215     432  329  14   14   -1   3    12   0    0 \nch id=216     318  125  16   18   -2   0    12   0    0 \nch id=217     279  26   14   20   -1   -2   12   0    0 \nch id=218     293  26   14   20   -1   -2   12   0    0 \n"	\
+                               "ch id=219     307  26   14   20   -1   -2   12   0    0 \nch id=220     321  26   14   20   -1   -2   12   0    0 \nch id=221     170  87   16   19   -3   -2   10   0    0 \nch id=222     219  265  13   16   -1   1    11   0    0 \n"	\
+                               "ch id=223     334  125  13   18   -1   0    10   0    0 \nch id=224     347  125  13   18   -2   0    10   0    0 \nch id=225     360  125  13   18   -2   0    10   0    0 \nch id=226     373  125  13   18   -2   0    10   0    0 \n"	\
+                               "ch id=227     386  125  13   18   -2   0    10   0    0 \nch id=228     399  125  13   18   -2   0    10   0    0 \nch id=229     335  26   13   20   -2   -2   10   0    0 \nch id=230     446  329  19   14   -2   4    15   0    0 \n"	\
+                               "ch id=231     134  180  12   17   -2   4    9    0    0 \nch id=232     412  125  14   18   -2   0    10   0    0 \nch id=233     426  125  14   18   -2   0    10   0    0 \nch id=234     440  125  14   18   -2   0    10   0    0 \n"	\
+                               "ch id=235     454  125  14   18   -2   0    10   0    0 \nch id=236     146  180  9    17   -3   0    5    0    0 \nch id=237     155  180  9    17   -1   0    5    0    0 \nch id=238     164  180  11   17   -3   0    5    0    0 \n"	\
+                               "ch id=239     175  180  9    17   -2   0    5    0    0 \nch id=240     468  125  14   18   -2   0    10   0    0 \nch id=241     184  180  13   17   -1   0    10   0    0 \nch id=242     482  125  14   18   -2   0    10   0    0 \n"	\
+                               "ch id=243     496  125  14   18   -2   0    10   0    0 \nch id=244     0    144  14   18   -2   0    10   0    0 \nch id=245     14   144  14   18   -2   0    10   0    0 \nch id=246     28   144  14   18   -2   0    10   0    0 \n"	\
+                               "ch id=247     465  329  14   14   -1   3    12   0    0 \nch id=248     234  329  14   15   -2   3    10   0    0 \nch id=249     42   144  13   18   -1   0    10   0    0 \nch id=250     55   144  13   18   -1   0    10   0    0 \n"	\
+                               "ch id=251     68   144  13   18   -1   0    10   0    0 \nch id=252     81   144  13   18   -1   0    10   0    0 \nch id=253     136  0    14   21   -2   0    9    0    0 \nch id=254     150  0    13   21   -1   0    10   0    0 \n"	\
+                               "ch id=255     163  0    14   21   -2   0    9    0    0 \nch id=256     186  87   16   19   -2   -2   11   0    0 \nch id=257     94   144  13   18   -2   0    10   0    0 \nch id=258     202  87   16   19   -2   -2   11   0    0 \n"	\
+                               "ch id=259     107  144  13   18   -2   0    10   0    0 \nch id=260     348  26   16   20   -2   1    11   0    0 \nch id=261     197  180  13   17   -2   4    10   0    0 \nch id=262     364  26   14   20   -2   -2   11   0    0 \n"	\
+                               "ch id=263     120  144  12   18   -2   0    9    0    0 \nch id=264     378  26   14   20   -2   -2   11   0    0 \nch id=265     132  144  13   18   -2   0    9    0    0 \nch id=266     392  26   14   20   -2   -2   11   0    0 \n"	\
+                               "ch id=267     145  144  12   18   -2   0    9    0    0 \nch id=268     406  26   14   20   -2   -2   11   0    0 \nch id=269     157  144  12   18   -2   0    9    0    0 \nch id=270     218  87   15   19   -1   -2   12   0    0 \n"	\
+                               "ch id=271     169  144  19   18   -2   0    10   0    0 \nch id=272     203  265  16   16   -2   1    12   0    0 \nch id=273     188  144  15   18   -2   0    10   0    0 \nch id=274     233  87   12   19   -1   -2   10   0    0 \n"	\
+                               "ch id=275     203  144  14   18   -2   0    10   0    0 \nch id=276     245  87   12   19   -1   -2   10   0    0 \nch id=277     217  144  14   18   -2   0    10   0    0 \nch id=278     257  87   12   19   -1   -2   10   0    0 \n"	\
+                               "ch id=279     231  144  14   18   -2   0    10   0    0 \nch id=280     420  26   12   20   -1   1    10   0    0 \nch id=281     210  180  14   17   -2   4    10   0    0 \nch id=282     269  87   12   19   -1   -2   10   0    0 \n"	\
+                               "ch id=283     245  144  14   18   -2   0    10   0    0 \nch id=284     432  26   15   20   -2   -2   12   0    0 \nch id=285     177  0    14   21   -2   0    10   0    0 \nch id=286     447  26   15   20   -2   -2   12   0    0 \n"	\
+                               "ch id=287     191  0    14   21   -2   0    10   0    0 \nch id=288     462  26   15   20   -2   -2   12   0    0 \nch id=289     205  0    14   21   -2   0    10   0    0 \nch id=290     477  26   15   20   -2   1    12   0    0 \n"	\
+                               "ch id=291     219  0    14   21   -2   0    10   0    0 \nch id=292     281  87   14   19   -1   -2   12   0    0 \nch id=293     295  87   15   19   -3   -2   10   0    0 \nch id=294     232  265  16   16   -1   1    14   0    0 \n"	\
+                               "ch id=295     224  180  14   17   -1   0    11   0    0 \nch id=296     310  87   10   19   -3   -2   5    0    0 \nch id=297     238  180  10   17   -2   0    5    0    0 \nch id=298     320  87   9    19   -2   -2   5    0    0 \n"	\
+                               "ch id=299     248  180  9    17   -2   0    5    0    0 \nch id=300     329  87   9    19   -2   -2   5    0    0 \nch id=301     257  180  9    17   -2   0    5    0    0 \nch id=302     492  26   9    20   -1   1    5    0    0 \n"	\
+                               "ch id=303     233  0    9    21   -1   0    5    0    0 \nch id=304     338  87   8    19   -1   -2   5    0    0 \nch id=305     248  359  7    13   -1   4    5    0    0 \nch id=306     0    47   13   20   -1   1    11   0    0 \n"	\
+                               "ch id=307     242  0    12   21   -1   0    10   0    0 \nch id=308     51   0    11   23   -3   -2   5    0    0 \nch id=309     254  0    11   21   -3   0    5    0    0 \nch id=310     13   47   15   20   -1   1    11   0    0 \n"	\
+                               "ch id=311     265  0    13   21   -1   0    10   0    0 \nch id=312     255  359  13   13   -1   4    10   0    0 \nch id=313     346  87   12   19   -1   -2   9    0    0 \nch id=314     358  87   8    19   -1   -2   5    0    0 \n"	\
+                               "ch id=315     28   47   12   20   -1   1    9    0    0 \nch id=316     278  0    8    21   -1   0    5    0    0 \nch id=317     248  265  12   16   -1   1    9    0    0 \nch id=318     266  180  10   17   -1   0    7    0    0 \n"	\
+                               "ch id=319     260  265  12   16   -1   1    9    0    0 \nch id=320     276  180  10   17   -1   0    8    0    0 \nch id=321     272  265  14   16   -3   1    9    0    0 \nch id=322     286  180  11   17   -3   0    5    0    0 \n"	\
+                               "ch id=323     366  87   14   19   -1   -2   12   0    0 \nch id=324     297  180  13   17   -1   0    10   0    0 \nch id=325     40   47   14   20   -1   1    12   0    0 \nch id=326     310  180  13   17   -1   4    10   0    0 \n"	\
+                               "ch id=327     380  87   14   19   -1   -2   12   0    0 \nch id=328     323  180  13   17   -1   0    10   0    0 \nch id=329     286  265  18   16   -2   1    14   0    0 \nch id=330     54   47   14   20   -1   1    12   0    0 \n"	\
+                               "ch id=331     336  180  13   17   -1   4    10   0    0 \nch id=332     68   47   16   20   -2   -2   12   0    0 \nch id=333     259  144  14   18   -2   0    10   0    0 \nch id=334     84   47   16   20   -2   -2   12   0    0 \n"	\
+                               "ch id=335     273  144  14   18   -2   0    10   0    0 \nch id=336     100  47   16   20   -2   -2   12   0    0 \nch id=337     287  144  14   18   -2   0    10   0    0 \nch id=338     349  180  20   17   -2   1    17   0    0 \n"	\
+                               "ch id=339     479  329  20   14   -2   4    16   0    0 \nch id=340     394  87   14   19   -1   -2   11   0    0 \nch id=341     369  180  11   17   -1   0    7    0    0 \nch id=342     116  47   14   20   -1   1    11   0    0 \n"	\
+                               "ch id=343     380  180  11   17   -1   4    7    0    0 \nch id=344     408  87   14   19   -1   -2   11   0    0 \nch id=345     391  180  11   17   -1   0    7    0    0 \nch id=346     130  47   13   20   -1   -2   10   0    0 \n"	\
+                               "ch id=347     301  144  12   18   -2   0    9    0    0 \nch id=348     143  47   13   20   -1   -2   10   0    0 \nch id=349     313  144  12   18   -2   0    9    0    0 \nch id=350     156  47   13   20   -1   1    10   0    0 \n"	\
+                               "ch id=351     402  180  12   17   -2   4    9    0    0 \nch id=352     169  47   13   20   -1   -2   10   0    0 \nch id=353     325  144  12   18   -2   0    9    0    0 \nch id=354     182  47   14   20   -2   1    10   0    0 \n"	\
+                               "ch id=355     196  47   11   20   -2   1    7    0    0 \nch id=356     422  87   14   19   -2   -2   10   0    0 \nch id=357     414  180  11   17   -2   0    7    0    0 \nch id=358     304  265  14   16   -2   1    10   0    0 \n"	\
+                               "ch id=359     318  265  11   16   -2   1    7    0    0 \nch id=360     207  47   14   20   -1   -2   12   0    0 \nch id=361     337  144  13   18   -1   0    10   0    0 \nch id=362     221  47   14   20   -1   -2   12   0    0 \n"	\
+                               "ch id=363     350  144  13   18   -1   0    10   0    0 \nch id=364     235  47   14   20   -1   -2   12   0    0 \nch id=365     363  144  13   18   -1   0    10   0    0 \nch id=366     286  0    14   21   -1   -3   12   0    0 \n"	\
+                               "ch id=367     249  47   13   20   -1   -2   10   0    0 \nch id=368     262  47   14   20   -1   -2   12   0    0 \nch id=369     376  144  13   18   -1   0    10   0    0 \nch id=370     276  47   14   20   -1   1    12   0    0 \n"	\
+                               "ch id=371     425  180  14   17   -1   4    10   0    0 \nch id=372     436  87   20   19   -2   -2   16   0    0 \nch id=373     439  180  17   17   -2   0    13   0    0 \nch id=374     456  87   16   19   -3   -2   10   0    0 \n"	\
+                               "ch id=375     300  0    14   21   -2   0    9    0    0 \nch id=376     472  87   16   19   -3   -2   10   0    0 \nch id=377     488  87   14   19   -2   -2   10   0    0 \nch id=378     456  180  12   17   -2   0    8    0    0 \n"	\
+                               "ch id=379     0    106  14   19   -2   -2   10   0    0 \nch id=380     468  180  12   17   -2   0    8    0    0 \nch id=381     14   106  14   19   -2   -2   10   0    0 \nch id=382     480  180  12   17   -2   0    8    0    0 \n"	\
+                               "ch id=383     492  180  11   17   -2   0    6    0    0 \nch id=884     121  386  7    9    -1   0    4    0    0 \nch id=885     128  386  7    9    -1   12   4    0    0 \nch id=890     224  386  7    8    0    13   7    0    0 \n"	\
+                               "ch id=891     499  329  12   14   -2   4    9    0    0 \nch id=892     0    345  12   14   -2   4    8    0    0 \nch id=893     12   345  12   14   -2   4    8    0    0 \nch id=894     329  265  9    16   -2   4    6    0    0 \n"	\
+                               "ch id=900     231  386  9    8    0    0    6    0    0 \nch id=901     0    386  10   10   -1   -3   7    0    0 \nch id=902     0    197  16   17   -2   0    11   0    0 \nch id=903     240  386  7    8    -1   5    5    0    0 \n"	\
+                               "ch id=904     16   197  16   17   -3   0    12   0    0 \nch id=905     32   197  18   17   -3   0    15   0    0 \nch id=906     50   197  12   17   -3   0    8    0    0 \nch id=908     389  144  18   18   -3   0    13   0    0 \n"	\
+                               "ch id=910     62   197  20   17   -3   0    14   0    0 \nch id=911     82   197  18   17   -3   0    13   0    0 \nch id=912     314  0    10   21   -2   -3   6    0    0 \nch id=913     338  265  16   16   -2   1    11   0    0 \n"	\
+                               "ch id=914     354  265  13   16   -1   1    11   0    0 \nch id=915     367  265  12   16   -1   1    9    0    0 \nch id=916     379  265  16   16   -2   1    11   0    0 \nch id=917     395  265  12   16   -1   1    10   0    0 \n"	\
+                               "ch id=918     407  265  14   16   -2   1    10   0    0 \nch id=919     421  265  14   16   -1   1    12   0    0 \nch id=920     100  197  16   17   -2   1    12   0    0 \nch id=921     435  265  8    16   -1   1    5    0    0 \n"	\
+                               "ch id=922     443  265  15   16   -1   1    11   0    0 \nch id=923     458  265  16   16   -2   1    11   0    0 \nch id=924     474  265  16   16   -1   1    14   0    0 \nch id=925     490  265  14   16   -1   1    12   0    0 \n"	\
+                               "ch id=926     0    281  11   16   -1   1    9    0    0 \nch id=927     116  197  16   17   -2   1    12   0    0 \nch id=928     11   281  14   16   -1   1    12   0    0 \nch id=929     25   281  13   16   -1   1    11   0    0 \n"	\
+                               "ch id=931     38   281  12   16   -1   1    10   0    0 \nch id=932     50   281  14   16   -2   1    10   0    0 \nch id=933     64   281  16   16   -3   1    10   0    0 \nch id=934     80   281  16   16   -2   1    12   0    0 \n"	\
+                               "ch id=935     96   281  15   16   -2   1    11   0    0 \nch id=936     111  281  16   16   -2   1    12   0    0 \nch id=937     127  281  16   16   -2   1    12   0    0 \nch id=938     502  87   9    19   -2   -2   5    0    0 \n"	\
+                               "ch id=939     472  87   16   19   -3   -2   10   0    0 \nch id=940     407  144  14   18   -2   0    10   0    0 \nch id=941     421  144  12   18   -2   0    8    0    0 \nch id=942     324  0    13   21   -1   0    10   0    0 \n"	\
+                               "ch id=943     433  144  9    18   -1   0    6    0    0 \nch id=944     337  0    13   21   -1   -3   10   0    0 \nch id=945     24   345  14   14   -2   4    10   0    0 \nch id=946     350  0    13   21   -1   0    10   0    0 \n"	\
+                               "ch id=947     132  197  14   17   -2   4    10   0    0 \nch id=948     442  144  14   18   -2   0    10   0    0 \nch id=949     38   345  12   14   -2   4    8    0    0 \nch id=950     363  0    12   21   -2   0    9    0    0 \n"	\
+                               "ch id=951     146  197  13   17   -1   4    10   0    0 \nch id=952     456  144  14   18   -2   0    10   0    0 \nch id=953     50   345  9    14   -1   4    6    0    0 \nch id=954     268  359  13   13   -1   4    10   0    0 \n"	\
+                               "ch id=955     159  197  13   17   -2   0    9    0    0 \nch id=956     172  197  14   17   -1   4    11   0    0 \nch id=957     281  359  14   13   -2   4    10   0    0 \nch id=958     375  0    12   21   -2   0    9    0    0 \n"	\
+                               "ch id=959     59   345  14   14   -2   4    10   0    0 \nch id=960     73   345  15   14   -2   4    11   0    0 \nch id=961     186  197  13   17   -1   4    10   0    0 \nch id=962     199  197  12   17   -2   4    9    0    0 \n"	\
+                               "ch id=963     88   345  15   14   -2   4    11   0    0 \nch id=964     103  345  13   14   -2   4    9    0    0 \nch id=965     116  345  13   14   -1   4    10   0    0 \nch id=966     211  197  15   17   -2   4    11   0    0 \n"	\
+                               "ch id=967     226  197  13   17   -2   4    9    0    0 \nch id=968     239  197  15   17   -2   4    11   0    0 \nch id=969     129  345  16   14   -2   4    13   0    0 \nch id=970     470  144  10   18   -2   0    6    0    0 \n"	\
+                               "ch id=971     480  144  13   18   -1   0    10   0    0 \nch id=972     493  144  14   18   -2   0    10   0    0 \nch id=973     0    162  13   18   -1   0    10   0    0 \nch id=974     13   162  16   18   -2   0    13   0    0 \n"	\
+                               "ch id=976     29   162  14   18   -2   0    9    0    0 \nch id=977     43   162  13   18   -2   0    10   0    0 \nch id=978     143  281  16   16   -2   1    11   0    0 \nch id=979     254  197  20   17   -3   0    14   0    0 \n"	\
+                               "ch id=980     28   106  16   19   -2   -2   11   0    0 \nch id=981     387  0    15   21   -2   0    11   0    0 \nch id=982     145  345  17   14   -2   4    13   0    0 \nch id=983     274  197  14   17   -2   4    11   0    0 \n"	\
+                               "ch id=984     290  47   16   20   -2   1    12   0    0 \nch id=985     288  197  14   17   -2   4    10   0    0 \nch id=986     306  47   14   20   -2   1    11   0    0 \nch id=987     302  197  12   17   -2   4    9    0    0 \n"	\
+                               "ch id=988     159  281  12   16   -1   1    10   0    0 \nch id=989     402  0    12   21   -3   0    7    0    0 \nch id=990     171  281  14   16   -2   1    10   0    0 \nch id=991     314  197  12   17   -1   0    10   0    0 \n"	\
+                               "ch id=992     320  47   17   20   -2   1    13   0    0 \nch id=993     185  281  13   16   -2   4    9    0    0 \nch id=994     337  47   20   20   -2   1    16   0    0 \nch id=995     326  197  16   17   -2   4    12   0    0 \n"	\
+                               "ch id=996     357  47   15   20   -2   1    12   0    0 \nch id=997     342  197  14   17   -2   4    10   0    0 \nch id=998     372  47   16   20   -1   1    13   0    0 \nch id=999     248  329  14   15   -2   3    11   0    0 \n"	\
+                               "ch id=1000    388  47   14   20   -2   1    11   0    0 \nch id=1001    356  197  13   17   -2   4    9    0    0 \nch id=1002    198  281  15   16   -2   1    11   0    0 \nch id=1003    295  359  13   13   -2   4    10   0    0 \n"	\
+                               "ch id=1004    56   162  15   18   -2   0    11   0    0 \nch id=1005    71   162  13   18   -1   0    10   0    0 \nch id=1006    402  47   14   20   -2   1    10   0    0 \nch id=1007    416  47   13   20   -2   1    9    0    0 \n"	\
+                               "ch id=1008    162  345  14   14   -2   4    11   0    0 \nch id=1009    369  197  13   17   -1   4    10   0    0 \nch id=1010    176  345  12   14   -2   4    9    0    0 \nch id=1011    414  0    9    21   -3   0    5    0    0 \n"	\
+                               "ch id=1012    382  197  16   17   -2   1    12   0    0 \nch id=1013    188  345  12   14   -2   4    9    0    0 \nch id=1014    200  345  12   14   -1   4    9    0    0 \nch id=1015    213  281  13   16   -1   1    11   0    0 \n"	\
+                               "ch id=1016    423  0    13   21   -1   0    10   0    0 \nch id=1017    398  197  14   17   -2   1    11   0    0 \nch id=1018    226  281  16   16   -1   1    14   0    0 \nch id=1019    412  197  13   17   -1   4    11   0    0 \n"	\
+                               "ch id=1020    425  197  14   17   -2   4    10   0    0 \nch id=1021    439  197  14   17   -2   1    10   0    0 \nch id=1022    453  197  14   17   -2   1    11   0    0 \nch id=1023    467  197  14   17   -2   1    10   0    0 \n"	\
+                               "ch id=1024    44   106  12   19   -1   -2   10   0    0 \nch id=1025    56   106  12   19   -1   -2   10   0    0 \nch id=1026    429  47   16   20   -2   1    13   0    0 \nch id=1027    68   106  12   19   -1   -2   9    0    0 \n"	\
+                               "ch id=1028    481  197  14   17   -2   1    11   0    0 \nch id=1029    495  197  13   17   -1   1    10   0    0 \nch id=1030    242  281  8    16   -1   1    5    0    0 \nch id=1031    80   106  9    19   -2   -2   5    0    0 \n"	\
+                               "ch id=1032    501  26   10   20   -3   1    5    0    0 \nch id=1033    250  281  20   16   -2   1    17   0    0 \nch id=1034    270  281  19   16   -1   1    16   0    0 \nch id=1035    289  281  16   16   -2   1    13   0    0 \n"	\
+                               "ch id=1036    89   106  15   19   -1   -2   12   0    0 \nch id=1037    104  106  14   19   -1   -2   12   0    0 \nch id=1038    118  106  15   19   -2   -2   11   0    0 \nch id=1039    133  106  14   19   -1   1    12   0    0 \n"	\
+                               "ch id=1040    305  281  16   16   -2   1    11   0    0 \nch id=1041    321  281  13   16   -1   1    11   0    0 \nch id=1042    334  281  13   16   -1   1    11   0    0 \nch id=1043    347  281  12   16   -1   1    9    0    0 \n"	\
+                               "ch id=1044    147  106  16   19   -2   1    13   0    0 \nch id=1045    359  281  12   16   -1   1    10   0    0 \nch id=1046    371  281  22   16   -2   1    18   0    0 \nch id=1047    0    214  14   17   -2   1    10   0    0 \n"	\
+                               "ch id=1048    393  281  14   16   -1   1    12   0    0 \nch id=1049    163  106  14   19   -1   -2   12   0    0 \nch id=1050    407  281  15   16   -1   1    12   0    0 \nch id=1051    422  281  15   16   -2   1    12   0    0 \n"	\
+                               "ch id=1052    437  281  16   16   -1   1    14   0    0 \nch id=1053    453  281  14   16   -1   1    12   0    0 \nch id=1054    14   214  16   17   -2   1    12   0    0 \nch id=1055    467  281  14   16   -1   1    12   0    0 \n"	\
+                               "ch id=1056    481  281  13   16   -1   1    11   0    0 \nch id=1057    398  197  14   17   -2   1    11   0    0 \nch id=1058    494  281  14   16   -2   1    10   0    0 \nch id=1059    0    297  15   16   -2   1    11   0    0 \n"	\
+                               "ch id=1060    15   297  18   16   -2   1    14   0    0 \nch id=1061    33   297  15   16   -2   1    11   0    0 \nch id=1062    177  106  16   19   -1   1    13   0    0 \nch id=1063    48   297  14   16   -1   1    12   0    0 \n"	\
+                               "ch id=1064    62   297  20   16   -1   1    18   0    0 \nch id=1065    193  106  22   19   -1   1    19   0    0 \nch id=1066    82   297  17   16   -2   1    14   0    0 \nch id=1067    99   297  18   16   -1   1    15   0    0 \n"	\
+                               "ch id=1068    117  297  13   16   -1   1    11   0    0 \nch id=1069    30   214  14   17   -2   1    11   0    0 \nch id=1070    44   214  20   17   -1   1    17   0    0 \nch id=1071    130  297  14   16   -2   1    11   0    0 \n"	\
+                               "ch id=1072    212  345  13   14   -2   4    10   0    0 \nch id=1073    84   162  14   18   -2   0    10   0    0 \nch id=1074    308  359  12   13   -1   4    9    0    0 \nch id=1075    320  359  11   13   -1   4    8    0    0 \n"	\
+                               "ch id=1076    144  297  15   16   -2   4    12   0    0 \nch id=1077    225  345  14   14   -2   4    10   0    0 \nch id=1078    331  359  19   13   -2   4    14   0    0 \nch id=1079    239  345  12   14   -2   4    8    0    0 \n"	\
+                               "ch id=1080    350  359  12   13   -1   4    10   0    0 \nch id=1081    64   214  12   17   -1   0    10   0    0 \nch id=1082    362  359  13   13   -1   4    10   0    0 \nch id=1083    375  359  14   13   -2   4    11   0    0 \n"	\
+                               "ch id=1084    389  359  14   13   -1   4    12   0    0 \nch id=1085    403  359  12   13   -1   4    10   0    0 \nch id=1086    251  345  14   14   -2   4    10   0    0 \nch id=1087    415  359  12   13   -1   4    10   0    0 \n"	\
+                               "ch id=1088    76   214  13   17   -1   4    10   0    0 \nch id=1089    265  345  12   14   -2   4    9    0    0 \nch id=1090    427  359  13   13   -2   4    8    0    0 \nch id=1091    89   214  14   17   -2   4    9    0    0 \n"	\
+                               "ch id=1092    436  0    18   21   -2   0    14   0    0 \nch id=1093    440  359  14   13   -2   4    9    0    0 \nch id=1094    159  297  14   16   -1   4    11   0    0 \nch id=1095    454  359  13   13   -2   4    10   0    0 \n"	\
+                               "ch id=1096    467  359  17   13   -1   4    15   0    0 \nch id=1097    173  297  19   16   -1   4    16   0    0 \nch id=1098    484  359  15   13   -2   4    11   0    0 \nch id=1099    0    373  15   13   -1   4    13   0    0 \n"	\
+                               "ch id=1100    499  359  12   13   -1   4    9    0    0 \nch id=1101    277  345  12   14   -2   4    9    0    0 \nch id=1102    289  345  17   14   -1   4    14   0    0 \nch id=1103    15   373  13   13   -2   4    9    0    0 \n"	\
+                               "ch id=1104    98   162  14   18   -2   0    10   0    0 \nch id=1105    112  162  14   18   -2   0    10   0    0 \nch id=1106    454  0    14   21   -2   0    10   0    0 \nch id=1107    103  214  11   17   -1   0    8    0    0 \n"	\
+                               "ch id=1108    306  345  12   14   -2   4    9    0    0 \nch id=1109    318  345  12   14   -2   4    9    0    0 \nch id=1110    503  180  7    17   -1   0    5    0    0 \nch id=1111    114  214  9    17   -2   0    5    0    0 \n"	\
+                               "ch id=1112    468  0    9    21   -3   0    5    0    0 \nch id=1113    28   373  18   13   -2   4    14   0    0 \nch id=1114    46   373  17   13   -1   4    14   0    0 \nch id=1115    123  214  14   17   -2   0    11   0    0 \n"	\
+                               "ch id=1116    137  214  13   17   -1   0    10   0    0 \nch id=1117    150  214  12   17   -1   0    10   0    0 \nch id=1118    477  0    14   21   -2   0    9    0    0 \nch id=1119    192  297  12   16   -1   4    10   0    0 \n"	\
+                               "ch id=1120    162  214  20   17   -2   1    16   0    0 \nch id=1121    330  345  16   14   -2   4    13   0    0 \nch id=1122    204  297  16   16   -2   1    12   0    0 \nch id=1123    220  297  14   16   -2   1    11   0    0 \n"	\
+                               "ch id=1124    182  214  17   17   -1   1    15   0    0 \nch id=1125    346  345  14   14   -1   4    12   0    0 \nch id=1126    234  297  19   16   -2   1    14   0    0 \nch id=1127    63   373  16   13   -2   4    12   0    0 \n"	\
+                               "ch id=1128    253  297  23   16   -1   1    20   0    0 \nch id=1129    79   373  19   13   -1   4    16   0    0 \nch id=1130    276  297  16   16   -2   1    12   0    0 \nch id=1131    98   373  14   13   -2   4    10   0    0 \n"	\
+                               "ch id=1132    292  297  20   16   -1   1    18   0    0 \nch id=1133    112  373  17   13   -1   4    15   0    0 \nch id=1134    38   0    13   24   -2   -3   10   0    0 \nch id=1135    491  0    12   21   -2   0    8    0    0 \n"	\
+                               "ch id=1136    312  297  20   16   -2   1    15   0    0 \nch id=1137    0    26   20   21   -2   0    15   0    0 \nch id=1138    199  214  16   17   -2   1    12   0    0 \nch id=1139    360  345  14   14   -2   4    10   0    0 \n"	\
+                               "ch id=1140    332  297  16   16   -2   1    12   0    0 \nch id=1141    129  373  14   13   -2   4    10   0    0 \nch id=1142    215  106  16   19   -2   -2   12   0    0 \nch id=1143    215  214  14   17   -2   0    10   0    0 \n"	\
+                               "ch id=1144    445  47   21   20   -2   1    17   0    0 \nch id=1145    229  214  19   17   -2   4    15   0    0 \nch id=1146    248  214  19   17   -2   1    15   0    0 \nch id=1147    374  345  16   14   -2   4    12   0    0 \n"	\
+                               "ch id=1148    466  47   24   20   -2   -2   20   0    0 \nch id=1149    231  106  21   19   -2   -1   17   0    0 \nch id=1150    490  47   20   20   -2   -2   16   0    0 \nch id=1151    267  214  16   17   -2   1    13   0    0 \n"	\
+                               "ch id=1152    0    67   14   20   -2   1    11   0    0 \nch id=1153    283  214  12   17   -2   4    9    0    0 \nch id=1154    143  373  12   13   -2   5    9    0    0 \nch id=1155    135  386  20   9    -11  -1   0    0    0 \n"	\
+                               "ch id=1156    388  386  15   7    -8   0    0    0    0 \nch id=1157    247  386  12   8    -8   0    0    0    0 \nch id=1158    259  386  12   8    -8   0    0    0    0 \nch id=1159    271  386  28   8    -14  0    0    0    0 \n"	\
+                               "ch id=1160    79   0    41   22   -18  -2   6    0    0 \nch id=1161    0    0    38   26   -17  -4   6    0    0 \nch id=1162    62   0    17   23   -1   -2   14   0    0 \nch id=1163    20   26   15   21   -1   0    12   0    0 \n"	\
+                               "ch id=1164    348  297  14   16   -2   1    11   0    0 \nch id=1165    362  297  13   16   -2   1    9    0    0 \nch id=1166    375  297  14   16   -1   1    11   0    0 \nch id=1167    295  214  13   17   -1   4    10   0    0 \n"	\
+                               "ch id=1168    252  106  12   19   -1   -2   9    0    0 \nch id=1169    389  297  11   16   -1   1    8    0    0 \nch id=1170    400  297  14   16   -2   1    10   0    0 \nch id=1171    155  373  12   13   -2   4    8    0    0 \n"	\
+                               "ch id=1172    14   67   14   20   -1   1    12   0    0 \nch id=1173    308  214  12   17   -1   4    10   0    0 \nch id=1174    264  106  22   19   -2   1    18   0    0 \nch id=1175    414  297  19   16   -2   4    14   0    0 \n"	\
+                               "ch id=1176    28   67   14   20   -2   1    10   0    0 \nch id=1177    320  214  12   17   -2   4    8    0    0 \nch id=1178    286  106  15   19   -1   1    11   0    0 \nch id=1179    433  297  13   16   -1   4    10   0    0 \n"	\
+                               "ch id=1180    446  297  15   16   -1   1    12   0    0 \nch id=1181    167  373  13   13   -1   4    10   0    0 \nch id=1182    461  297  16   16   -2   1    12   0    0 \nch id=1183    332  214  14   17   -2   0    10   0    0 \n"	\
+                               "ch id=1184    477  297  19   16   -2   1    15   0    0 \nch id=1185    180  373  16   13   -2   4    12   0    0 \nch id=1186    301  106  17   19   -1   1    14   0    0 \nch id=1187    496  297  15   16   -1   4    12   0    0 \n"	\
+                               "ch id=1188    0    313  19   16   -1   1    16   0    0 \nch id=1189    196  373  16   13   -1   4    13   0    0 \nch id=1190    42   67   21   20   -1   1    18   0    0 \nch id=1191    346  214  17   17   -1   4    15   0    0 \n"	\
+                               "ch id=1192    363  214  18   17   -2   1    14   0    0 \nch id=1193    390  345  17   14   -2   4    12   0    0 \nch id=1194    63   67   14   20   -2   1    11   0    0 \nch id=1195    381  214  12   17   -2   4    9    0    0 \n"	\
+                               "ch id=1196    318  106  14   19   -2   1    10   0    0 \nch id=1197    19   313  13   16   -2   4    8    0    0 \nch id=1198    32   313  16   16   -3   1    10   0    0 \nch id=1199    393  214  14   17   -2   4    9    0    0 \n"	\
+                               "ch id=1200    48   313  16   16   -3   1    10   0    0 \nch id=1201    407  214  14   17   -2   4    9    0    0 \nch id=1202    332  106  15   19   -2   1    11   0    0 \nch id=1203    64   313  14   16   -2   4    9    0    0 \n"	\
+                               "ch id=1204    347  106  20   19   -2   1    16   0    0 \nch id=1205    78   313  19   16   -2   4    14   0    0 \nch id=1206    367  106  18   19   -1   1    12   0    0 \nch id=1207    97   313  15   16   -2   4    10   0    0 \n"	\
+                               "ch id=1208    112  313  14   16   -1   1    12   0    0 \nch id=1209    212  373  13   13   -2   4    10   0    0 \nch id=1210    126  313  14   16   -1   1    12   0    0 \nch id=1211    421  214  13   17   -1   0    10   0    0 \n"	\
+                               "ch id=1212    434  214  19   17   -2   1    15   0    0 \nch id=1213    407  345  15   14   -2   4    12   0    0 \nch id=1214    385  106  19   19   -2   1    15   0    0 \nch id=1215    140  313  15   16   -2   4    12   0    0 \n"	\
+                               "ch id=1216    155  313  8    16   -1   1    5    0    0 \nch id=1217    404  106  22   19   -2   -2   18   0    0 \nch id=1218    453  214  19   17   -2   0    14   0    0 \nch id=1219    77   67   15   20   -1   1    11   0    0 \n"	\
+                               "ch id=1220    472  214  13   17   -1   4    9    0    0 \nch id=1221    92   67   18   20   -2   1    14   0    0 \nch id=1222    485  214  16   17   -2   4    12   0    0 \nch id=1223    110  67   14   20   -1   1    12   0    0 \n"	\
+                               "ch id=1224    0    231  12   17   -1   4    10   0    0 \nch id=1225    124  67   17   20   -1   1    14   0    0 \nch id=1226    12   231  15   17   -1   4    12   0    0 \nch id=1227    426  106  14   19   -1   1    12   0    0 \n"	\
+                               "ch id=1228    163  313  13   16   -2   4    10   0    0 \nch id=1229    141  67   19   20   -1   1    16   0    0 \nch id=1230    27   231  17   17   -1   4    13   0    0 \nch id=1231    501  214  7    17   -1   0    5    0    0 \n"	\
+                               "ch id=1232    440  106  16   19   -2   -2   11   0    0 \nch id=1233    126  162  13   18   -2   0    10   0    0 \nch id=1234    456  106  16   19   -2   -2   11   0    0 \nch id=1235    139  162  13   18   -2   0    10   0    0 \n"	\
+                               "ch id=1236    176  313  19   16   -2   1    16   0    0 \nch id=1237    422  345  19   14   -2   4    15   0    0 \nch id=1238    472  106  12   19   -1   -2   10   0    0 \nch id=1239    152  162  14   18   -2   0    10   0    0 \n"	\
+                               "ch id=1240    44   231  16   17   -2   1    12   0    0 \nch id=1241    441  345  14   14   -2   4    10   0    0 \nch id=1242    160  67   16   20   -2   -2   12   0    0 \nch id=1243    166  162  14   18   -2   0    10   0    0 \n"	\
+                               "ch id=1244    484  106  22   19   -2   -2   18   0    0 \nch id=1245    60   231  19   17   -2   0    14   0    0 \nch id=1246    176  67   14   20   -2   -2   10   0    0 \nch id=1247    180  162  12   18   -2   0    8    0    0 \n"	\
+                               "ch id=1248    79   231  14   17   -1   1    11   0    0 \nch id=1249    93   231  13   17   -2   4    9    0    0 \nch id=1250    0    125  14   19   -1   -2   12   0    0 \nch id=1251    106  231  12   17   -1   0    10   0    0 \n"	\
+                               "ch id=1252    14   125  14   19   -1   -2   12   0    0 \nch id=1253    118  231  12   17   -1   0    10   0    0 \nch id=1254    190  67   16   20   -2   -2   12   0    0 \nch id=1255    192  162  14   18   -2   0    10   0    0 \n"	\
+                               "ch id=1256    130  231  16   17   -2   1    12   0    0 \nch id=1257    455  345  14   14   -2   4    10   0    0 \nch id=1258    206  67   16   20   -2   -2   12   0    0 \nch id=1259    206  162  14   18   -2   0    10   0    0 \n"	\
+                               "ch id=1260    222  67   14   20   -2   -2   11   0    0 \nch id=1261    220  162  12   18   -2   0    9    0    0 \nch id=1262    28   125  15   19   -2   -2   11   0    0 \nch id=1263    35   26   14   21   -2   0    9    0    0 \n"	\
+                               "ch id=1264    43   125  15   19   -2   -2   11   0    0 \nch id=1265    49   26   14   21   -2   0    9    0    0 \nch id=1266    58   125  15   19   -2   -2   11   0    0 \nch id=1267    63   26   14   21   -2   0    9    0    0 \n"	\
+                               "ch id=1268    73   125  14   19   -1   -2   12   0    0 \nch id=1269    146  231  13   17   -2   0    10   0    0 \nch id=1270    87   125  12   19   -1   1    9    0    0 \nch id=1271    195  313  11   16   -1   4    8    0    0 \n"	\
+                               "ch id=1272    99   125  18   19   -1   -2   15   0    0 \nch id=1273    159  231  15   17   -1   0    13   0    0 \nch id=1274    236  67   14   20   -2   1    10   0    0 \nch id=1275    174  231  12   17   -2   4    8    0    0 \n"	\
+                               "ch id=1276    250  67   15   20   -2   1    11   0    0 \nch id=1277    186  231  13   17   -2   4    9    0    0 \nch id=1278    206  313  15   16   -2   1    11   0    0 \nch id=1279    225  373  14   13   -2   4    9    0    0 \n"	\
+                               "ch id=1280    221  313  13   16   -1   1    11   0    0 \nch id=1281    239  373  12   13   -2   4    9    0    0 \nch id=1282    199  231  19   17   -1   1    17   0    0 \nch id=1283    469  345  17   14   -2   4    13   0    0 \n"	\
+                               "ch id=1284    218  231  18   17   -1   1    16   0    0 \nch id=1285    486  345  16   14   -1   4    13   0    0 \nch id=1286    265  67   15   20   -1   1    12   0    0 \nch id=1287    236  231  13   17   -1   4    10   0    0 \n"	\
+                               "ch id=1288    249  231  21   17   -2   1    18   0    0 \nch id=1289    0    359  18   14   -2   4    15   0    0 \nch id=1290    270  231  21   17   -1   1    19   0    0 \nch id=1291    18   359  17   14   -1   4    15   0    0 \n"	\
+                               "ch id=1292    291  231  15   17   -2   1    12   0    0 \nch id=1293    35   359  12   14   -2   4    9    0    0 \nch id=1294    306  231  17   17   -2   1    14   0    0 \nch id=1295    47   359  15   14   -2   4    12   0    0 \n"	\
+                               "ch id=1296    323  231  13   17   -2   1    10   0    0 \nch id=1297    62   359  12   14   -2   4    8    0    0 \nch id=1298    280  67   15   20   -2   1    12   0    0 \nch id=1299    336  231  14   17   -2   4    11   0    0 \n"	\
+                               "ch id=1300    234  313  23   16   -2   1    19   0    0 \nch id=1301    251  373  20   13   -2   4    15   0    0 \nch id=1302    257  313  19   16   -1   1    15   0    0 \nch id=1303    350  231  17   17   -1   4    14   0    0 \n"	\
+                               "ch id=1304    276  313  19   16   -2   1    16   0    0 \nch id=1305    74   359  18   14   -2   4    15   0    0 \nch id=1306    117  125  16   19   -2   1    12   0    0 \nch id=1307    367  231  14   17   -2   4    10   0    0 \n"	\
+                               "ch id=1308    295  313  20   16   -2   1    16   0    0 \nch id=1309    271  373  17   13   -2   4    13   0    0 \nch id=1310    315  313  15   16   -1   1    12   0    0 \nch id=1311    288  373  13   13   -1   4    10   0    0 \n"	\
+                               "ch id=1312    295  67   22   20   -2   1    18   0    0 \nch id=1313    381  231  19   17   -2   4    15   0    0 \nch id=1314    317  67   21   20   -1   1    18   0    0 \nch id=1315    400  231  17   17   -1   4    15   0    0 \n"	\
+                               "ch id=1316    133  125  17   19   -1   1    14   0    0 \nch id=1317    330  313  15   16   -1   4    12   0    0 \nch id=8192    0    0    0    0    -2   0    7    0    0 \nch id=8193    0    0    0    0    -2   0    14   0    0 \n"	\
+                               "ch id=8194    0    0    0    0    -2   0    7    0    0 \nch id=8195    0    0    0    0    -2   0    14   0    0 \nch id=8196    0    0    0    0    -2   0    5    0    0 \nch id=8197    0    0    0    0    -2   0    4    0    0 \n"	\
+                               "ch id=8198    0    0    0    0    -2   0    2    0    0 \nch id=8199    0    0    0    0    -2   0    10   0    0 \nch id=8200    0    0    0    0    -2   0    5    0    0 \nch id=8201    0    0    0    0    -2   0    3    0    0 \n"	\
+                               "ch id=8202    0    0    0    0    -2   0    1    0    0 \nch id=8203    0    0    0    0    -2   0    0    0    0 \nch id=8204    0    0    0    0    -2   0    0    0    0 \nch id=8210    403  386  14   7    -2   7    10   0    0 \n"	\
+                               "ch id=8211    417  386  11   7    -2   7    7    0    0 \nch id=8212    428  386  18   7    -2   7    14   0    0 \nch id=8213    446  386  19   7    -2   7    14   0    0 \nch id=8214    77   26   9    21   -1   0    7    0    0 \n"	\
+                               "ch id=8215    299  386  12   8    -2   13   7    0    0 \nch id=8216    10   386  8    10   -1   1    5    0    0 \nch id=8217    18   386  8    10   -2   1    5    0    0 \nch id=8218    26   386  8    10   -1   9    5    0    0 \n"	\
+                               "ch id=8219    34   386  8    10   -2   1    5    0    0 \nch id=8220    42   386  12   10   -1   1    9    0    0 \nch id=8221    54   386  11   10   -1   1    9    0    0 \nch id=8222    65   386  11   10   -1   9    9    0    0 \n"	\
+                               "ch id=8223    76   386  11   10   -1   1    9    0    0 \nch id=8224    232  162  11   18   -2   1    7    0    0 \nch id=8225    243  162  11   18   -2   1    7    0    0 \nch id=8226    87   386  10   10   0    4    9    0    0 \n"	\
+                               "ch id=8230    311  386  17   8    -1   9    14   0    0 \nch id=8239    0    0    0    0    -2   0    3    0    0 \nch id=8240    417  231  25   17   -2   1    21   0    0 \nch id=8242    328  386  8    8    -2   1    4    0    0 \n"	\
+                               "ch id=8243    336  386  11   8    -2   1    6    0    0 \nch id=8244    347  386  13   8    -2   1    9    0    0 \nch id=8249    397  373  8    12   -1   4    6    0    0 \nch id=8250    405  373  8    12   -1   4    6    0    0 \n"	\
+                               "ch id=8252    345  313  11   16   -1   1    9    0    0 \nch id=8254    465  386  12   6    -2   1    7    0    0 \nch id=8260    442  231  18   17   -5   1    2    0    0 \nch id=8286    504  265  7    15   -1   2    5    0    0 \n"	\
+                               "ch id=8352    356  313  17   16   -2   1    13   0    0 \nch id=8353    254  162  14   18   -2   0    10   0    0 \nch id=8354    460  231  14   17   -2   1    10   0    0 \nch id=8355    373  313  13   16   -1   1    10   0    0 \n"	\
+                               "ch id=8356    386  313  13   16   -2   1    10   0    0 \nch id=8357    474  231  17   17   -1   2    15   0    0 \nch id=8358    399  313  14   16   -2   1    10   0    0 \nch id=8359    0    248  25   17   -1   1    22   0    0 \n"	\
+                               "ch id=8360    491  231  20   17   -1   1    17   0    0 \nch id=8361    413  313  20   16   -2   1    16   0    0 \nch id=8363    86   26   15   21   -2   0    10   0    0 \nch id=8364    25   248  15   17   -3   1    10   0    0 \n"	\
+                               "ch id=8365    433  313  15   16   -2   1    10   0    0 \nch id=8366    448  313  14   16   -2   1    10   0    0 \nch id=8367    338  67   21   20   -1   1    20   0    0 \nch id=8368    40   248  14   17   -2   1    10   0    0 \n"	\
+                               "ch id=8369    462  313  15   16   -2   1    10   0    0 \nch id=8370    150  125  14   19   -2   0    10   0    0 \nch id=8371    477  313  14   16   -2   1    10   0    0 \nch id=8372    54   248  16   17   -2   1    12   0    0 \n"	\
+                               "ch id=8373    359  67   13   20   -1   0    10   0    0 \nch id=8377    491  313  14   16   -2   1    10   0    0 \nch id=8378    0    329  14   16   -2   1    10   0    0 \nch id=8482    155  386  14   9    0    1    14   0    0 \n"	\
+                               "ch id=8710    102  329  15   16   -2   1    10   0    0 \nch id=9167    106  359  16   14   -1   3    14   0    0 \nch id=9632    128  248  16   17   -1   2    14   0    0 \nch id=9633    176  248  16   17   -1   2    14   0    0 \n"	\
+                               "ch id=9635    192  248  16   17   -1   2    14   0    0 \nch id=9650    160  248  16   17   -2   2    11   0    0 \nch id=9654    96   248  16   17   -2   2    11   0    0 \nch id=9660    144  248  16   17   -2   2    11   0    0 \n"	\
+                               "ch id=9664    112  248  16   17   -2   2    11   0    0 \nch id=9733    208  248  16   17   -2   1    13   0    0 \nch id=9734    224  248  16   17   -2   1    13   0    0 \nch id=9744    161  329  15   16   -1   1    13   0    0 \n"	\
+                               "ch id=9745    176  329  15   16   -1   1    13   0    0 \nch id=9746    191  329  15   16   -1   1    13   0    0 \nch id=9775    133  329  15   16   -1   1    13   0    0 \nch id=9785    230  125  17   19   -1   0    15   0    0 \n"	\
+                               "ch id=9786    213  125  17   19   -1   0    15   0    0 \nch id=9873    148  329  13   16   0    1    13   0    0 \nch id=9986    413  373  16   12   -2   3    12   0    0 \nch id=9992    117  329  16   16   -2   1    12   0    0 \n"	\
+                               "ch id=9997    122  359  16   14   -2   2    12   0    0 \nch id=9998    276  329  14   15   -1   1    12   0    0 \nch id=10003   138  359  12   14   0    2    12   0    0 \nch id=10007   240  248  14   17   -1   1    12   0    0 \n"	\
+                               "ch id=11360   14   329  13   16   -2   1    9    0    0 \nch id=11361   70   248  10   17   -2   0    5    0    0 \nch id=11362   27   329  14   16   -3   1    9    0    0 \nch id=11363   41   329  14   16   -2   1    11   0    0 \n"	\
+                               "ch id=11364   372  67   14   20   -1   1    11   0    0 \nch id=11365   262  329  14   15   -2   3    10   0    0 \nch id=11366   386  67   11   20   -2   -1   7    0    0 \nch id=11367   164  125  17   19   -1   1    14   0    0 \n"	\
+                               "ch id=11368   397  67   16   20   -1   0    10   0    0 \nch id=11369   181  125  15   19   -1   1    11   0    0 \nch id=11370   413  67   13   20   -1   0    10   0    0 \nch id=11371   196  125  17   19   -2   1    10   0    0 \n"	\
+                               "ch id=11372   55   329  13   16   -2   4    8    0    0 \nch id=11373   80   248  16   17   -2   1    12   0    0 \nch id=11377   301  373  16   13   -2   4    11   0    0 \nch id=11378   68   329  22   16   -2   1    18   0    0 \n"	\
+                               "ch id=11379   317  373  20   13   -2   4    15   0    0 \nch id=11380   92   359  14   14   -2   3    9    0    0 \nch id=11381   90   329  12   16   -1   1    10   0    0 \nch id=11382   337  373  10   13   -1   4    8    0    0 \n"	\
+                               "ch id=11383   347  373  15   13   -2   4    11   0    0 \n"	\
                                "kernings count=875\n"	\
-                               "kerning first=121 second=46 amount=-1\n"	\
-                               "kerning first=8220 second=65 amount=-2\n"	\
-                               "kerning first=194 second=121 amount=-1\n"	\
-                               "kerning first=87 second=234 amount=-1\n"	\
-                               "kerning first=221 second=79 amount=-1\n"	\
-                               "kerning first=86 second=233 amount=-1\n"	\
-                               "kerning first=84 second=45 amount=-2\n"	\
-                               "kerning first=89 second=195 amount=-2\n"	\
-                               "kerning first=67 second=8217 amount=1\n"	\
-                               "kerning first=356 second=44 amount=-2\n"	\
-                               "kerning first=88 second=79 amount=-1\n"	\
-                               "kerning first=87 second=193 amount=-1\n"	\
-                               "kerning first=70 second=58 amount=-1\n"	\
-                               "kerning first=70 second=59 amount=-1\n"	\
-                               "kerning first=221 second=65 amount=-2\n"	\
-                               "kerning first=221 second=97 amount=-1\n"	\
-                               "kerning first=75 second=255 amount=-1\n"	\
-                               "kerning first=76 second=79 amount=-1\n"	\
-                               "kerning first=114 second=8217 amount=1\n"	\
-                               "kerning first=256 second=84 amount=-1\n"	\
-                               "kerning first=76 second=85 amount=-1\n"	\
-                               "kerning first=193 second=86 amount=-1\n"	\
-                               "kerning first=119 second=44 amount=-1\n"	\
-                               "kerning first=45 second=88 amount=-1\n"	\
-                               "kerning first=8216 second=89 amount=1\n"	\
-                               "kerning first=313 second=121 amount=-1\n"	\
-                               "kerning first=376 second=97 amount=-1\n"	\
-                               "kerning first=84 second=99 amount=-2\n"	\
-                               "kerning first=86 second=8222 amount=-1\n"	\
-                               "kerning first=356 second=235 amount=-2\n"	\
-                               "kerning first=86 second=58 amount=-1\n"	\
-                               "kerning first=320 second=108 amount=-2\n"	\
-                               "kerning first=8220 second=195 amount=-2\n"	\
-                               "kerning first=376 second=101 amount=-1\n"	\
-                               "kerning first=70 second=114 amount=-1\n"	\
-                               "kerning first=84 second=115 amount=-2\n"	\
-                               "kerning first=70 second=117 amount=-1\n"	\
-                               "kerning first=196 second=118 amount=-1\n"	\
-                               "kerning first=84 second=119 amount=-2\n"	\
-                               "kerning first=70 second=250 amount=-1\n"	\
-                               "kerning first=196 second=121 amount=-1\n"	\
-                               "kerning first=75 second=214 amount=-1\n"	\
-                               "kerning first=192 second=253 amount=-1\n"	\
-                               "kerning first=88 second=213 amount=-1\n"	\
-                               "kerning first=193 second=356 amount=-1\n"	\
-                               "kerning first=216 second=88 amount=-1\n"	\
-                               "kerning first=82 second=84 amount=-1\n"	\
-                               "kerning first=356 second=229 amount=-2\n"	\
-                               "kerning first=376 second=227 amount=-1\n"	\
-                               "kerning first=221 second=46 amount=-3\n"	\
-                               "kerning first=260 second=372 amount=-1\n"	\
-                               "kerning first=75 second=121 amount=-1\n"	\
-                               "kerning first=376 second=339 amount=-1\n"	\
-                               "kerning first=376 second=193 amount=-2\n"	\
-                               "kerning first=356 second=194 amount=-1\n"	\
-                               "kerning first=70 second=195 amount=-2\n"	\
-                               "kerning first=89 second=196 amount=-2\n"	\
-                               "kerning first=75 second=199 amount=-1\n"	\
-                               "kerning first=87 second=283 amount=-1\n"	\
-                               "kerning first=195 second=374 amount=-2\n"	\
-                               "kerning first=84 second=243 amount=-2\n"	\
-                               "kerning first=356 second=46 amount=-2\n"	\
-                               "kerning first=84 second=246 amount=-1\n"	\
-                               "kerning first=313 second=211 amount=-1\n"	\
-                               "kerning first=89 second=58 amount=-1\n"	\
-                               "kerning first=313 second=214 amount=-1\n"	\
-                               "kerning first=356 second=367 amount=-2\n"	\
-                               "kerning first=317 second=216 amount=-1\n"	\
-                               "kerning first=76 second=217 amount=-1\n"	\
-                               "kerning first=313 second=218 amount=-1\n"	\
-                               "kerning first=321 second=219 amount=-1\n"	\
-                               "kerning first=212 second=221 amount=-1\n"	\
-                               "kerning first=317 second=210 amount=-1\n"	\
-                               "kerning first=344 second=221 amount=-1\n"	\
-                               "kerning first=87 second=224 amount=-1\n"	\
-                               "kerning first=70 second=225 amount=-1\n"	\
-                               "kerning first=356 second=226 amount=-2\n"	\
-                               "kerning first=221 second=227 amount=-1\n"	\
-                               "kerning first=356 second=232 amount=-2\n"	\
-                               "kerning first=221 second=229 amount=-1\n"	\
-                               "kerning first=70 second=230 amount=-1\n"	\
-                               "kerning first=84 second=231 amount=-2\n"	\
-                               "kerning first=89 second=232 amount=-1\n"	\
-                               "kerning first=84 second=234 amount=-2\n"	\
-                               "kerning first=70 second=235 amount=-1\n"	\
-                               "kerning first=195 second=89 amount=-2\n"	\
-                               "kerning first=87 second=242 amount=-1\n"	\
-                               "kerning first=84 second=242 amount=-1\n"	\
-                               "kerning first=356 second=243 amount=-2\n"	\
-                               "kerning first=356 second=245 amount=-2\n"	\
-                               "kerning first=70 second=246 amount=-1\n"	\
-                               "kerning first=87 second=97 amount=-1\n"	\
-                               "kerning first=70 second=248 amount=-1\n"	\
-                               "kerning first=84 second=249 amount=-2\n"	\
-                               "kerning first=356 second=341 amount=-2\n"	\
-                               "kerning first=356 second=251 amount=-2\n"	\
-                               "kerning first=70 second=252 amount=-1\n"	\
-                               "kerning first=317 second=253 amount=-1\n"	\
-                               "kerning first=344 second=255 amount=-1\n"	\
-                               "kerning first=86 second=339 amount=-1\n"	\
-                               "kerning first=87 second=196 amount=-1\n"	\
-                               "kerning first=70 second=258 amount=-2\n"	\
-                               "kerning first=70 second=259 amount=-1\n"	\
-                               "kerning first=70 second=260 amount=-2\n"	\
-                               "kerning first=70 second=261 amount=-1\n"	\
-                               "kerning first=86 second=246 amount=-1\n"	\
-                               "kerning first=75 second=268 amount=-1\n"	\
-                               "kerning first=84 second=269 amount=-2\n"	\
-                               "kerning first=321 second=255 amount=-1\n"	\
-                               "kerning first=8222 second=87 amount=-2\n"	\
-                               "kerning first=356 second=117 amount=-2\n"	\
-                               "kerning first=70 second=275 amount=-1\n"	\
-                               "kerning first=70 second=277 amount=-1\n"	\
-                               "kerning first=70 second=279 amount=-1\n"	\
-                               "kerning first=192 second=121 amount=-1\n"	\
-                               "kerning first=70 second=281 amount=-1\n"	\
-                               "kerning first=86 second=244 amount=-1\n"	\
-                               "kerning first=84 second=283 amount=-2\n"	\
-                               "kerning first=376 second=249 amount=-1\n"	\
-                               "kerning first=260 second=375 amount=-1\n"	\
-                               "kerning first=8218 second=84 amount=-3\n"	\
-                               "kerning first=76 second=220 amount=-1\n"	\
-                               "kerning first=118 second=46 amount=-1\n"	\
-                               "kerning first=88 second=268 amount=-1\n"	\
-                               "kerning first=65 second=89 amount=-2\n"	\
-                               "kerning first=86 second=195 amount=-1\n"	\
-                               "kerning first=84 second=8222 amount=-2\n"	\
-                               "kerning first=376 second=224 amount=-1\n"	\
-                               "kerning first=194 second=8222 amount=1\n"	\
-                               "kerning first=86 second=252 amount=-1\n"	\
-                               "kerning first=75 second=211 amount=-1\n"	\
-                               "kerning first=211 second=376 amount=-1\n"	\
-                               "kerning first=376 second=79 amount=-1\n"	\
-                               "kerning first=193 second=8221 amount=-1\n"	\
-                               "kerning first=256 second=374 amount=-2\n"	\
-                               "kerning first=344 second=89 amount=-1\n"	\
-                               "kerning first=102 second=44 amount=-1\n"	\
-                               "kerning first=313 second=356 amount=-3\n"	\
-                               "kerning first=221 second=224 amount=-1\n"	\
-                               "kerning first=70 second=333 amount=-1\n"	\
-                               "kerning first=70 second=335 amount=-1\n"	\
-                               "kerning first=70 second=337 amount=-1\n"	\
-                               "kerning first=75 second=338 amount=-1\n"	\
-                               "kerning first=84 second=339 amount=-1\n"	\
-                               "kerning first=70 second=341 amount=-1\n"	\
-                               "kerning first=70 second=343 amount=-1\n"	\
-                               "kerning first=70 second=345 amount=-1\n"	\
-                               "kerning first=83 second=350 amount=-1\n"	\
-                               "kerning first=258 second=121 amount=-1\n"	\
-                               "kerning first=83 second=352 amount=-1\n"	\
-                               "kerning first=84 second=353 amount=-2\n"	\
-                               "kerning first=65 second=354 amount=-1\n"	\
-                               "kerning first=76 second=86 amount=-2\n"	\
-                               "kerning first=89 second=250 amount=-1\n"	\
-                               "kerning first=70 second=361 amount=-1\n"	\
-                               "kerning first=70 second=363 amount=-1\n"	\
-                               "kerning first=102 second=8221 amount=1\n"	\
-                               "kerning first=70 second=365 amount=-1\n"	\
-                               "kerning first=313 second=366 amount=-1\n"	\
-                               "kerning first=376 second=367 amount=-1\n"	\
-                               "kerning first=258 second=376 amount=-2\n"	\
-                               "kerning first=70 second=369 amount=-1\n"	\
-                               "kerning first=344 second=376 amount=-1\n"	\
-                               "kerning first=70 second=371 amount=-1\n"	\
-                               "kerning first=194 second=372 amount=-1\n"	\
-                               "kerning first=65 second=374 amount=-2\n"	\
-                               "kerning first=65 second=375 amount=-1\n"	\
-                               "kerning first=214 second=376 amount=-1\n"	\
-                               "kerning first=8220 second=194 amount=-2\n"	\
-                               "kerning first=70 second=193 amount=-2\n"	\
-                               "kerning first=256 second=221 amount=-2\n"	\
-                               "kerning first=79 second=221 amount=-1\n"	\
-                               "kerning first=195 second=221 amount=-2\n"	\
-                               "kerning first=80 second=196 amount=-1\n"	\
-                               "kerning first=256 second=253 amount=-1\n"	\
-                               "kerning first=66 second=372 amount=-1\n"	\
-                               "kerning first=313 second=8217 amount=-4\n"	\
-                               "kerning first=321 second=217 amount=-1\n"	\
-                               "kerning first=88 second=199 amount=-1\n"	\
-                               "kerning first=199 second=8217 amount=1\n"	\
-                               "kerning first=89 second=192 amount=-2\n"	\
-                               "kerning first=341 second=46 amount=-2\n"	\
-                               "kerning first=258 second=354 amount=-1\n"	\
-                               "kerning first=65 second=86 amount=-1\n"	\
-                               "kerning first=221 second=211 amount=-1\n"	\
-                               "kerning first=86 second=192 amount=-1\n"	\
-                               "kerning first=317 second=221 amount=-2\n"	\
-                               "kerning first=89 second=212 amount=-1\n"	\
-                               "kerning first=211 second=89 amount=-1\n"	\
-                               "kerning first=258 second=84 amount=-1\n"	\
-                               "kerning first=84 second=351 amount=-2\n"	\
-                               "kerning first=221 second=268 amount=-1\n"	\
-                               "kerning first=213 second=88 amount=-1\n"	\
-                               "kerning first=89 second=367 amount=-1\n"	\
-                               "kerning first=356 second=114 amount=-2\n"	\
-                               "kerning first=321 second=356 amount=-3\n"	\
-                               "kerning first=313 second=376 amount=-2\n"	\
-                               "kerning first=196 second=372 amount=-1\n"	\
-                               "kerning first=214 second=89 amount=-1\n"	\
-                               "kerning first=8216 second=376 amount=1\n"	\
-                               "kerning first=270 second=374 amount=-1\n"	\
-                               "kerning first=80 second=44 amount=-3\n"	\
-                               "kerning first=70 second=283 amount=-1\n"	\
-                               "kerning first=76 second=253 amount=-1\n"	\
-                               "kerning first=376 second=246 amount=-1\n"	\
-                               "kerning first=89 second=45 amount=-2\n"	\
-                               "kerning first=70 second=228 amount=-1\n"	\
-                               "kerning first=321 second=221 amount=-2\n"	\
-                               "kerning first=70 second=121 amount=-1\n"	\
-                               "kerning first=260 second=8222 amount=1\n"	\
-                               "kerning first=376 second=235 amount=-1\n"	\
-                               "kerning first=70 second=97 amount=-1\n"	\
-                               "kerning first=260 second=255 amount=-1\n"	\
-                               "kerning first=321 second=211 amount=-1\n"	\
-                               "kerning first=317 second=213 amount=-1\n"	\
-                               "kerning first=8222 second=86 amount=-2\n"	\
-                               "kerning first=344 second=121 amount=-1\n"	\
-                               "kerning first=221 second=214 amount=-1\n"	\
-                               "kerning first=272 second=374 amount=-1\n"	\
-                               "kerning first=376 second=65 amount=-2\n"	\
-                               "kerning first=194 second=255 amount=-1\n"	\
-                               "kerning first=84 second=196 amount=-1\n"	\
-                               "kerning first=8222 second=89 amount=-3\n"	\
-                               "kerning first=196 second=375 amount=-1\n"	\
-                               "kerning first=86 second=250 amount=-1\n"	\
-                               "kerning first=260 second=8217 amount=-1\n"	\
-                               "kerning first=356 second=111 amount=-2\n"	\
-                               "kerning first=68 second=374 amount=-1\n"	\
-                               "kerning first=376 second=251 amount=-1\n"	\
-                               "kerning first=345 second=46 amount=-2\n"	\
-                               "kerning first=376 second=243 amount=-1\n"	\
-                               "kerning first=65 second=253 amount=-1\n"	\
-                               "kerning first=8220 second=192 amount=-2\n"	\
-                               "kerning first=84 second=97 amount=-2\n"	\
-                               "kerning first=221 second=235 amount=-1\n"	\
-                               "kerning first=313 second=85 amount=-1\n"	\
-                               "kerning first=262 second=8221 amount=1\n"	\
-                               "kerning first=87 second=245 amount=-1\n"	\
-                               "kerning first=317 second=366 amount=-1\n"	\
-                               "kerning first=350 second=83 amount=-1\n"	\
-                               "kerning first=321 second=216 amount=-1\n"	\
-                               "kerning first=192 second=86 amount=-1\n"	\
-                               "kerning first=70 second=233 amount=-1\n"	\
-                               "kerning first=68 second=221 amount=-1\n"	\
-                               "kerning first=193 second=8218 amount=1\n"	\
-                               "kerning first=356 second=193 amount=-1\n"	\
-                               "kerning first=89 second=226 amount=-1\n"	\
-                               "kerning first=221 second=243 amount=-1\n"	\
-                               "kerning first=221 second=228 amount=-1\n"	\
-                               "kerning first=84 second=226 amount=-1\n"	\
-                               "kerning first=221 second=251 amount=-1\n"	\
-                               "kerning first=84 second=58 amount=-1\n"	\
-                               "kerning first=376 second=199 amount=-1\n"	\
-                               "kerning first=84 second=229 amount=-1\n"	\
-                               "kerning first=221 second=210 amount=-1\n"	\
-                               "kerning first=75 second=45 amount=-1\n"	\
-                               "kerning first=80 second=195 amount=-1\n"	\
-                               "kerning first=344 second=356 amount=-1\n"	\
-                               "kerning first=192 second=255 amount=-1\n"	\
-                               "kerning first=84 second=244 amount=-1\n"	\
-                               "kerning first=84 second=235 amount=-2\n"	\
-                               "kerning first=272 second=89 amount=-1\n"	\
-                               "kerning first=212 second=376 amount=-1\n"	\
-                               "kerning first=221 second=225 amount=-1\n"	\
-                               "kerning first=8216 second=74 amount=-1\n"	\
-                               "kerning first=84 second=255 amount=-2\n"	\
-                               "kerning first=356 second=253 amount=-2\n"	\
-                               "kerning first=195 second=376 amount=-2\n"	\
-                               "kerning first=376 second=210 amount=-1\n"	\
-                               "kerning first=84 second=367 amount=-2\n"	\
-                               "kerning first=86 second=235 amount=-1\n"	\
-                               "kerning first=70 second=192 amount=-2\n"	\
-                               "kerning first=341 second=44 amount=-2\n"	\
-                               "kerning first=70 second=65 amount=-2\n"	\
-                               "kerning first=221 second=199 amount=-1\n"	\
-                               "kerning first=89 second=97 amount=-1\n"	\
-                               "kerning first=210 second=221 amount=-1\n"	\
-                               "kerning first=84 second=233 amount=-2\n"	\
-                               "kerning first=88 second=211 amount=-1\n"	\
-                               "kerning first=84 second=8218 amount=-2\n"	\
-                               "kerning first=317 second=79 amount=-1\n"	\
-                               "kerning first=221 second=195 amount=-2\n"	\
-                               "kerning first=82 second=376 amount=-1\n"	\
-                               "kerning first=356 second=224 amount=-2\n"	\
-                               "kerning first=212 second=89 amount=-1\n"	\
-                               "kerning first=8222 second=84 amount=-3\n"	\
-                               "kerning first=8218 second=87 amount=-2\n"	\
-                               "kerning first=76 second=216 amount=-1\n"	\
-                               "kerning first=196 second=374 amount=-2\n"	\
-                               "kerning first=84 second=345 amount=-2\n"	\
-                               "kerning first=313 second=86 amount=-2\n"	\
-                               "kerning first=86 second=224 amount=-1\n"	\
-                               "kerning first=321 second=85 amount=-1\n"	\
-                               "kerning first=89 second=46 amount=-3\n"	\
-                               "kerning first=196 second=221 amount=-2\n"	\
-                               "kerning first=270 second=376 amount=-1\n"	\
-                               "kerning first=221 second=246 amount=-1\n"	\
-                               "kerning first=87 second=228 amount=-1\n"	\
-                               "kerning first=193 second=375 amount=-1\n"	\
-                               "kerning first=76 second=84 amount=-3\n"	\
-                               "kerning first=376 second=225 amount=-1\n"	\
-                               "kerning first=84 second=121 amount=-2\n"	\
-                               "kerning first=356 second=242 amount=-2\n"	\
-                               "kerning first=89 second=251 amount=-1\n"	\
-                               "kerning first=194 second=84 amount=-1\n"	\
-                               "kerning first=260 second=221 amount=-2\n"	\
-                               "kerning first=89 second=59 amount=-1\n"	\
-                               "kerning first=272 second=221 amount=-1\n"	\
-                               "kerning first=70 second=44 amount=-3\n"	\
-                               "kerning first=87 second=232 amount=-1\n"	\
-                               "kerning first=87 second=244 amount=-1\n"	\
-                               "kerning first=80 second=46 amount=-3\n"	\
-                               "kerning first=376 second=248 amount=-1\n"	\
-                               "kerning first=260 second=356 amount=-1\n"	\
-                               "kerning first=76 second=121 amount=-1\n"	\
-                               "kerning first=313 second=219 amount=-1\n"	\
-                               "kerning first=70 second=256 amount=-2\n"	\
-                               "kerning first=89 second=101 amount=-1\n"	\
-                               "kerning first=356 second=263 amount=-2\n"	\
-                               "kerning first=8222 second=356 amount=-3\n"	\
-                               "kerning first=317 second=376 amount=-2\n"	\
-                               "kerning first=221 second=232 amount=-1\n"	\
-                               "kerning first=70 second=255 amount=-1\n"	\
-                               "kerning first=70 second=244 amount=-1\n"	\
-                               "kerning first=258 second=118 amount=-1\n"	\
-                               "kerning first=258 second=372 amount=-1\n"	\
-                               "kerning first=88 second=338 amount=-1\n"	\
-                               "kerning first=89 second=283 amount=-1\n"	\
-                               "kerning first=208 second=374 amount=-1\n"	\
-                               "kerning first=268 second=8221 amount=1\n"	\
-                               "kerning first=196 second=8221 amount=-1\n"	\
-                               "kerning first=352 second=350 amount=-1\n"	\
-                               "kerning first=321 second=86 amount=-2\n"	\
-                               "kerning first=196 second=8222 amount=1\n"	\
-                               "kerning first=376 second=8222 amount=-2\n"	\
-                               "kerning first=8216 second=192 amount=-2\n"	\
-                               "kerning first=76 second=366 amount=-1\n"	\
-                               "kerning first=376 second=195 amount=-2\n"	\
-                               "kerning first=8218 second=356 amount=-3\n"	\
-                               "kerning first=260 second=118 amount=-1\n"	\
-                               "kerning first=376 second=67 amount=-1\n"	\
-                               "kerning first=270 second=221 amount=-1\n"	\
-                               "kerning first=196 second=87 amount=-1\n"	\
-                               "kerning first=210 second=88 amount=-1\n"	\
-                               "kerning first=221 second=262 amount=-1\n"	\
-                               "kerning first=344 second=253 amount=-1\n"	\
-                               "kerning first=192 second=354 amount=-1\n"	\
-                               "kerning first=70 second=111 amount=-1\n"	\
-                               "kerning first=356 second=353 amount=-2\n"	\
-                               "kerning first=102 second=8217 amount=1\n"	\
-                               "kerning first=194 second=87 amount=-1\n"	\
-                               "kerning first=376 second=46 amount=-3\n"	\
-                               "kerning first=87 second=233 amount=-1\n"	\
-                               "kerning first=88 second=210 amount=-1\n"	\
-                               "kerning first=89 second=245 amount=-1\n"	\
-                               "kerning first=70 second=224 amount=-1\n"	\
-                               "kerning first=86 second=45 amount=-1\n"	\
-                               "kerning first=82 second=253 amount=-1\n"	\
-                               "kerning first=80 second=8222 amount=-3\n"	\
-                               "kerning first=221 second=8222 amount=-2\n"	\
-                               "kerning first=192 second=84 amount=-1\n"	\
-                               "kerning first=79 second=376 amount=-1\n"	\
-                               "kerning first=193 second=8217 amount=-1\n"	\
-                               "kerning first=86 second=8218 amount=-2\n"	\
-                               "kerning first=86 second=194 amount=-1\n"	\
-                               "kerning first=260 second=8221 amount=-1\n"	\
-                               "kerning first=256 second=8222 amount=1\n"	\
-                               "kerning first=68 second=89 amount=-1\n"	\
-                               "kerning first=193 second=374 amount=-2\n"	\
-                               "kerning first=317 second=89 amount=-2\n"	\
-                               "kerning first=65 second=84 amount=-1\n"	\
-                               "kerning first=356 second=196 amount=-1\n"	\
-                               "kerning first=89 second=224 amount=-1\n"	\
-                               "kerning first=84 second=59 amount=-1\n"	\
-                               "kerning first=65 second=255 amount=-1\n"	\
-                               "kerning first=87 second=192 amount=-1\n"	\
-                               "kerning first=321 second=210 amount=-1\n"	\
-                               "kerning first=195 second=121 amount=-1\n"	\
-                               "kerning first=221 second=194 amount=-2\n"	\
-                               "kerning first=268 second=8217 amount=1\n"	\
-                               "kerning first=356 second=255 amount=-2\n"	\
-                               "kerning first=102 second=46 amount=-1\n"	\
-                               "kerning first=221 second=252 amount=-1\n"	\
-                               "kerning first=70 second=245 amount=-1\n"	\
-                               "kerning first=89 second=244 amount=-1\n"	\
-                               "kerning first=8220 second=196 amount=-2\n"	\
-                               "kerning first=212 second=88 amount=-1\n"	\
-                               "kerning first=193 second=221 amount=-2\n"	\
-                               "kerning first=84 second=117 amount=-2\n"	\
-                               "kerning first=376 second=268 amount=-1\n"	\
-                               "kerning first=194 second=118 amount=-1\n"	\
-                               "kerning first=76 second=255 amount=-1\n"	\
-                               "kerning first=193 second=253 amount=-1\n"	\
-                               "kerning first=86 second=230 amount=-1\n"	\
-                               "kerning first=84 second=111 amount=-2\n"	\
-                               "kerning first=84 second=228 amount=-1\n"	\
-                               "kerning first=356 second=195 amount=-1\n"	\
-                               "kerning first=356 second=248 amount=-1\n"	\
-                               "kerning first=195 second=354 amount=-1\n"	\
-                               "kerning first=313 second=213 amount=-1\n"	\
-                               "kerning first=317 second=338 amount=-1\n"	\
-                               "kerning first=70 second=234 amount=-1\n"	\
-                               "kerning first=89 second=246 amount=-1\n"	\
-                               "kerning first=376 second=252 amount=-1\n"	\
-                               "kerning first=352 second=83 amount=-1\n"	\
-                               "kerning first=75 second=262 amount=-1\n"	\
-                               "kerning first=65 second=8218 amount=1\n"	\
-                               "kerning first=356 second=269 amount=-2\n"	\
-                               "kerning first=65 second=376 amount=-2\n"	\
-                               "kerning first=45 second=86 amount=-1\n"	\
-                               "kerning first=76 second=218 amount=-1\n"	\
-                               "kerning first=79 second=89 amount=-1\n"	\
-                               "kerning first=256 second=89 amount=-2\n"	\
-                               "kerning first=321 second=8221 amount=-3\n"	\
-                               "kerning first=86 second=251 amount=-1\n"	\
-                               "kerning first=45 second=356 amount=-2\n"	\
-                               "kerning first=317 second=8221 amount=-4\n"	\
-                               "kerning first=317 second=212 amount=-1\n"	\
-                               "kerning first=76 second=376 amount=-2\n"	\
-                               "kerning first=256 second=354 amount=-1\n"	\
-                               "kerning first=221 second=245 amount=-1\n"	\
-                               "kerning first=356 second=115 amount=-2\n"	\
-                               "kerning first=88 second=216 amount=-1\n"	\
-                               "kerning first=89 second=44 amount=-3\n"	\
-                               "kerning first=194 second=86 amount=-1\n"	\
-                               "kerning first=376 second=59 amount=-1\n"	\
-                               "kerning first=70 second=229 amount=-1\n"	\
-                               "kerning first=86 second=97 amount=-1\n"	\
-                               "kerning first=221 second=45 amount=-2\n"	\
-                               "kerning first=89 second=214 amount=-1\n"	\
-                               "kerning first=70 second=101 amount=-1\n"	\
-                               "kerning first=89 second=8222 amount=-2\n"	\
-                               "kerning first=255 second=44 amount=-1\n"	\
-                               "kerning first=114 second=44 amount=-2\n"	\
-                               "kerning first=66 second=221 amount=-1\n"	\
-                               "kerning first=8216 second=198 amount=-2\n"	\
-                               "kerning first=317 second=121 amount=-1\n"	\
-                               "kerning first=195 second=8218 amount=1\n"	\
-                               "kerning first=321 second=87 amount=-1\n"	\
-                               "kerning first=89 second=233 amount=-1\n"	\
-                               "kerning first=192 second=376 amount=-2\n"	\
-                               "kerning first=270 second=89 amount=-1\n"	\
-                               "kerning first=84 second=192 amount=-1\n"	\
-                               "kerning first=88 second=67 amount=-1\n"	\
-                               "kerning first=89 second=193 amount=-2\n"	\
-                               "kerning first=272 second=376 amount=-1\n"	\
-                               "kerning first=89 second=235 amount=-1\n"	\
-                               "kerning first=317 second=84 amount=-3\n"	\
-                               "kerning first=199 second=8221 amount=1\n"	\
-                               "kerning first=321 second=214 amount=-1\n"	\
-                               "kerning first=87 second=44 amount=-1\n"	\
-                               "kerning first=356 second=65 amount=-1\n"	\
-                               "kerning first=317 second=217 amount=-1\n"	\
-                               "kerning first=256 second=121 amount=-1\n"	\
-                               "kerning first=266 second=8217 amount=1\n"	\
-                               "kerning first=89 second=243 amount=-1\n"	\
-                               "kerning first=86 second=283 amount=-1\n"	\
-                               "kerning first=221 second=226 amount=-1\n"	\
-                               "kerning first=89 second=65 amount=-2\n"	\
-                               "kerning first=86 second=225 amount=-1\n"	\
-                               "kerning first=260 second=87 amount=-1\n"	\
-                               "kerning first=256 second=8218 amount=1\n"	\
-                               "kerning first=376 second=226 amount=-1\n"	\
-                               "kerning first=321 second=220 amount=-1\n"	\
-                               "kerning first=87 second=111 amount=-1\n"	\
-                               "kerning first=321 second=213 amount=-1\n"	\
-                               "kerning first=66 second=86 amount=-1\n"	\
-                               "kerning first=70 second=194 amount=-2\n"	\
-                               "kerning first=356 second=121 amount=-2\n"	\
-                               "kerning first=8218 second=89 amount=-3\n"	\
-                               "kerning first=89 second=210 amount=-1\n"	\
-                               "kerning first=262 second=8217 amount=1\n"	\
-                               "kerning first=89 second=225 amount=-1\n"	\
-                               "kerning first=317 second=356 amount=-3\n"	\
-                               "kerning first=89 second=228 amount=-1\n"	\
-                               "kerning first=356 second=8218 amount=-2\n"	\
-                               "kerning first=210 second=89 amount=-1\n"	\
-                               "kerning first=258 second=86 amount=-1\n"	\
-                               "kerning first=356 second=225 amount=-2\n"	\
-                               "kerning first=376 second=242 amount=-1\n"	\
-                               "kerning first=86 second=44 amount=-2\n"	\
-                               "kerning first=87 second=243 amount=-1\n"	\
-                               "kerning first=84 second=101 amount=-2\n"	\
-                               "kerning first=313 second=210 amount=-1\n"	\
-                               "kerning first=84 second=227 amount=-1\n"	\
-                               "kerning first=82 second=89 amount=-1\n"	\
-                               "kerning first=192 second=356 amount=-1\n"	\
-                               "kerning first=196 second=354 amount=-1\n"	\
-                               "kerning first=376 second=212 amount=-1\n"	\
-                               "kerning first=195 second=375 amount=-1\n"	\
-                               "kerning first=89 second=199 amount=-1\n"	\
-                               "kerning first=194 second=356 amount=-1\n"	\
-                               "kerning first=82 second=121 amount=-1\n"	\
-                               "kerning first=376 second=45 amount=-2\n"	\
-                               "kerning first=260 second=89 amount=-2\n"	\
-                               "kerning first=89 second=252 amount=-1\n"	\
-                               "kerning first=196 second=376 amount=-2\n"	\
-                               "kerning first=66 second=87 amount=-1\n"	\
-                               "kerning first=76 second=338 amount=-1\n"	\
-                               "kerning first=340 second=376 amount=-1\n"	\
-                               "kerning first=317 second=214 amount=-1\n"	\
-                               "kerning first=194 second=221 amount=-2\n"	\
-                               "kerning first=196 second=86 amount=-1\n"	\
-                               "kerning first=221 second=234 amount=-1\n"	\
-                               "kerning first=253 second=44 amount=-1\n"	\
-                               "kerning first=313 second=221 amount=-2\n"	\
-                               "kerning first=313 second=84 amount=-3\n"	\
-                               "kerning first=356 second=99 amount=-2\n"	\
-                               "kerning first=266 second=8221 amount=1\n"	\
-                               "kerning first=194 second=8221 amount=-1\n"	\
-                               "kerning first=89 second=234 amount=-1\n"	\
-                               "kerning first=87 second=230 amount=-1\n"	\
-                               "kerning first=65 second=372 amount=-1\n"	\
-                               "kerning first=256 second=375 amount=-1\n"	\
-                               "kerning first=75 second=79 amount=-1\n"	\
-                               "kerning first=221 second=242 amount=-1\n"	\
-                               "kerning first=86 second=65 amount=-1\n"	\
-                               "kerning first=8216 second=65 amount=-2\n"	\
-                               "kerning first=75 second=210 amount=-1\n"	\
-                               "kerning first=221 second=59 amount=-1\n"	\
-                               "kerning first=321 second=218 amount=-1\n"	\
-                               "kerning first=258 second=8217 amount=-1\n"	\
-                               "kerning first=356 second=58 amount=-1\n"	\
-                               "kerning first=65 second=118 amount=-1\n"	\
-                               "kerning first=70 second=243 amount=-1\n"	\
-                               "kerning first=256 second=255 amount=-1\n"	\
-                               "kerning first=321 second=84 amount=-3\n"	\
-                               "kerning first=87 second=195 amount=-1\n"	\
-                               "kerning first=70 second=227 amount=-1\n"	\
-                               "kerning first=82 second=356 amount=-1\n"	\
-                               "kerning first=376 second=245 amount=-1\n"	\
-                               "kerning first=8216 second=221 amount=1\n"	\
-                               "kerning first=221 second=230 amount=-1\n"	\
-                               "kerning first=194 second=374 amount=-2\n"	\
-                               "kerning first=195 second=118 amount=-1\n"	\
-                               "kerning first=195 second=372 amount=-1\n"	\
-                               "kerning first=213 second=89 amount=-1\n"	\
-                               "kerning first=321 second=89 amount=-2\n"	\
-                               "kerning first=317 second=211 amount=-1\n"	\
-                               "kerning first=221 second=283 amount=-1\n"	\
-                               "kerning first=313 second=8221 amount=-4\n"	\
-                               "kerning first=84 second=194 amount=-1\n"	\
-                               "kerning first=356 second=228 amount=-2\n"	\
-                               "kerning first=88 second=45 amount=-1\n"	\
-                               "kerning first=84 second=224 amount=-1\n"	\
-                               "kerning first=255 second=46 amount=-1\n"	\
-                               "kerning first=87 second=101 amount=-1\n"	\
-                               "kerning first=208 second=221 amount=-1\n"	\
-                               "kerning first=345 second=8217 amount=1\n"	\
-                               "kerning first=89 second=117 amount=-1\n"	\
-                               "kerning first=313 second=87 amount=-1\n"	\
-                               "kerning first=356 second=233 amount=-2\n"	\
-                               "kerning first=350 second=350 amount=-1\n"	\
-                               "kerning first=321 second=338 amount=-1\n"	\
-                               "kerning first=89 second=8218 amount=-3\n"	\
-                               "kerning first=89 second=262 amount=-1\n"	\
-                               "kerning first=195 second=255 amount=-1\n"	\
-                               "kerning first=208 second=376 amount=-1\n"	\
-                               "kerning first=86 second=248 amount=-1\n"	\
-                               "kerning first=82 second=221 amount=-1\n"	\
-                               "kerning first=256 second=372 amount=-1\n"	\
-                               "kerning first=87 second=339 amount=-1\n"	\
-                               "kerning first=340 second=253 amount=-1\n"	\
-                               "kerning first=196 second=253 amount=-1\n"	\
-                               "kerning first=80 second=194 amount=-1\n"	\
-                               "kerning first=193 second=121 amount=-1\n"	\
-                               "kerning first=356 second=8222 amount=-2\n"	\
-                               "kerning first=193 second=376 amount=-2\n"	\
-                               "kerning first=221 second=67 amount=-1\n"	\
-                               "kerning first=86 second=101 amount=-1\n"	\
-                               "kerning first=260 second=376 amount=-2\n"	\
-                               "kerning first=256 second=356 amount=-1\n"	\
-                               "kerning first=84 second=44 amount=-2\n"	\
-                               "kerning first=66 second=374 amount=-1\n"	\
-                               "kerning first=76 second=356 amount=-3\n"	\
-                               "kerning first=221 second=196 amount=-2\n"	\
-                               "kerning first=76 second=89 amount=-2\n"	\
-                               "kerning first=317 second=219 amount=-1\n"	\
-                               "kerning first=87 second=235 amount=-1\n"	\
-                               "kerning first=65 second=121 amount=-1\n"	\
-                               "kerning first=86 second=232 amount=-1\n"	\
-                               "kerning first=321 second=253 amount=-1\n"	\
-                               "kerning first=356 second=250 amount=-2\n"	\
-                               "kerning first=84 second=230 amount=-2\n"	\
-                               "kerning first=86 second=245 amount=-1\n"	\
-                               "kerning first=313 second=255 amount=-1\n"	\
-                               "kerning first=192 second=118 amount=-1\n"	\
-                               "kerning first=89 second=194 amount=-2\n"	\
-                               "kerning first=70 second=251 amount=-1\n"	\
-                               "kerning first=86 second=59 amount=-1\n"	\
-                               "kerning first=86 second=234 amount=-1\n"	\
-                               "kerning first=87 second=246 amount=-1\n"	\
-                               "kerning first=192 second=8222 amount=1\n"	\
-                               "kerning first=317 second=8217 amount=-4\n"	\
-                               "kerning first=89 second=79 amount=-1\n"	\
-                               "kerning first=86 second=117 amount=-1\n"	\
-                               "kerning first=70 second=249 amount=-1\n"	\
-                               "kerning first=8218 second=221 amount=-3\n"	\
-                               "kerning first=89 second=213 amount=-1\n"	\
-                               "kerning first=76 second=214 amount=-1\n"	\
-                               "kerning first=213 second=221 amount=-1\n"	\
-                               "kerning first=84 second=245 amount=-1\n"	\
-                               "kerning first=258 second=356 amount=-1\n"	\
-                               "kerning first=45 second=84 amount=-2\n"	\
-                               "kerning first=192 second=375 amount=-1\n"	\
-                               "kerning first=221 second=248 amount=-1\n"	\
-                               "kerning first=356 second=252 amount=-2\n"	\
-                               "kerning first=356 second=192 amount=-1\n"	\
-                               "kerning first=260 second=86 amount=-1\n"	\
-                               "kerning first=86 second=46 amount=-2\n"	\
-                               "kerning first=356 second=246 amount=-2\n"	\
-                               "kerning first=260 second=374 amount=-2\n"	\
-                               "kerning first=376 second=196 amount=-2\n"	\
-                               "kerning first=193 second=89 amount=-2\n"	\
-                               "kerning first=256 second=8217 amount=-1\n"	\
-                               "kerning first=376 second=230 amount=-1\n"	\
-                               "kerning first=356 second=244 amount=-2\n"	\
-                               "kerning first=195 second=8217 amount=-1\n"	\
-                               "kerning first=195 second=356 amount=-1\n"	\
-                               "kerning first=221 second=44 amount=-3\n"	\
-                               "kerning first=84 second=65 amount=-1\n"	\
-                               "kerning first=196 second=356 amount=-1\n"	\
-                               "kerning first=196 second=89 amount=-2\n"	\
-                               "kerning first=340 second=89 amount=-1\n"	\
-                               "kerning first=86 second=226 amount=-1\n"	\
-                               "kerning first=356 second=231 amount=-2\n"	\
-                               "kerning first=256 second=376 amount=-2\n"	\
-                               "kerning first=194 second=8217 amount=-1\n"	\
-                               "kerning first=70 second=257 amount=-1\n"	\
-                               "kerning first=356 second=45 amount=-2\n"	\
-                               "kerning first=65 second=8222 amount=1\n"	\
-                               "kerning first=80 second=65 amount=-1\n"	\
-                               "kerning first=89 second=339 amount=-1\n"	\
-                               "kerning first=193 second=8222 amount=1\n"	\
-                               "kerning first=8220 second=74 amount=-1\n"	\
-                               "kerning first=356 second=339 amount=-1\n"	\
-                               "kerning first=313 second=220 amount=-1\n"	\
-                               "kerning first=8216 second=194 amount=-2\n"	\
-                               "kerning first=317 second=255 amount=-1\n"	\
-                               "kerning first=84 second=251 amount=-2\n"	\
-                               "kerning first=258 second=8218 amount=1\n"	\
-                               "kerning first=87 second=46 amount=-1\n"	\
-                               "kerning first=45 second=87 amount=-1\n"	\
-                               "kerning first=258 second=87 amount=-1\n"	\
-                               "kerning first=8218 second=86 amount=-2\n"	\
-                               "kerning first=352 second=352 amount=-1\n"	\
-                               "kerning first=86 second=229 amount=-1\n"	\
-                               "kerning first=65 second=8217 amount=-1\n"	\
-                               "kerning first=89 second=111 amount=-1\n"	\
-                               "kerning first=376 second=338 amount=-1\n"	\
-                               "kerning first=221 second=338 amount=-1\n"	\
-                               "kerning first=119 second=46 amount=-1\n"	\
-                               "kerning first=65 second=356 amount=-1\n"	\
-                               "kerning first=196 second=8217 amount=-1\n"	\
-                               "kerning first=221 second=193 amount=-2\n"	\
-                               "kerning first=80 second=193 amount=-1\n"	\
-                               "kerning first=88 second=212 amount=-1\n"	\
-                               "kerning first=356 second=227 amount=-2\n"	\
-                               "kerning first=195 second=8222 amount=1\n"	\
-                               "kerning first=344 second=84 amount=-1\n"	\
-                               "kerning first=195 second=253 amount=-1\n"	\
-                               "kerning first=67 second=8221 amount=1\n"	\
-                               "kerning first=260 second=253 amount=-1\n"	\
-                               "kerning first=76 second=219 amount=-1\n"	\
-                               "kerning first=376 second=211 amount=-1\n"	\
-                               "kerning first=114 second=46 amount=-2\n"	\
-                               "kerning first=83 second=83 amount=-1\n"	\
-                               "kerning first=75 second=213 amount=-1\n"	\
-                               "kerning first=317 second=85 amount=-1\n"	\
-                               "kerning first=82 second=255 amount=-1\n"	\
-                               "kerning first=86 second=367 amount=-1\n"	\
-                               "kerning first=192 second=372 amount=-1\n"	\
-                               "kerning first=79 second=88 amount=-1\n"	\
-                               "kerning first=70 second=8218 amount=-3\n"	\
-                               "kerning first=70 second=339 amount=-1\n"	\
-                               "kerning first=253 second=46 amount=-1\n"	\
-                               "kerning first=76 second=87 amount=-1\n"	\
-                               "kerning first=76 second=8217 amount=-4\n"	\
-                               "kerning first=70 second=8222 amount=-3\n"	\
-                               "kerning first=192 second=221 amount=-2\n"	\
-                               "kerning first=84 second=114 amount=-2\n"	\
-                               "kerning first=356 second=119 amount=-2\n"	\
-                               "kerning first=194 second=376 amount=-2\n"	\
-                               "kerning first=86 second=193 amount=-1\n"	\
-                               "kerning first=192 second=8221 amount=-1\n"	\
-                               "kerning first=208 second=89 amount=-1\n"	\
-                               "kerning first=8220 second=193 amount=-2\n"	\
-                               "kerning first=87 second=65 amount=-1\n"	\
-                               "kerning first=194 second=253 amount=-1\n"	\
-                               "kerning first=376 second=214 amount=-1\n"	\
-                               "kerning first=76 second=213 amount=-1\n"	\
-                               "kerning first=70 second=196 amount=-2\n"	\
-                               "kerning first=84 second=341 amount=-2\n"	\
-                               "kerning first=313 second=212 amount=-1\n"	\
-                               "kerning first=258 second=375 amount=-1\n"	\
-                               "kerning first=340 second=121 amount=-1\n"	\
-                               "kerning first=192 second=87 amount=-1\n"	\
-                               "kerning first=356 second=97 amount=-2\n"	\
-                               "kerning first=75 second=212 amount=-1\n"	\
-                               "kerning first=260 second=121 amount=-1\n"	\
-                               "kerning first=376 second=244 amount=-1\n"	\
-                               "kerning first=376 second=229 amount=-1\n"	\
-                               "kerning first=356 second=101 amount=-2\n"	\
-                               "kerning first=356 second=345 amount=-2\n"	\
-                               "kerning first=194 second=89 amount=-2\n"	\
-                               "kerning first=70 second=226 amount=-1\n"	\
-                               "kerning first=192 second=8217 amount=-1\n"	\
-                               "kerning first=84 second=193 amount=-1\n"	\
-                               "kerning first=195 second=84 amount=-1\n"	\
-                               "kerning first=258 second=8221 amount=-1\n"	\
-                               "kerning first=84 second=250 amount=-2\n"	\
-                               "kerning first=317 second=220 amount=-1\n"	\
-                               "kerning first=356 second=234 amount=-2\n"	\
-                               "kerning first=193 second=118 amount=-1\n"	\
-                               "kerning first=121 second=44 amount=-1\n"	\
-                               "kerning first=214 second=221 amount=-1\n"	\
-                               "kerning first=340 second=84 amount=-1\n"	\
-                               "kerning first=196 second=84 amount=-1\n"	\
-                               "kerning first=8216 second=193 amount=-2\n"	\
-                               "kerning first=75 second=67 amount=-1\n"	\
-                               "kerning first=8222 second=221 amount=-3\n"	\
-                               "kerning first=194 second=354 amount=-1\n"	\
-                               "kerning first=70 second=375 amount=-1\n"	\
-                               "kerning first=89 second=242 amount=-1\n"	\
-                               "kerning first=65 second=221 amount=-2\n"	\
-                               "kerning first=84 second=195 amount=-1\n"	\
-                               "kerning first=376 second=117 amount=-1\n"	\
-                               "kerning first=376 second=8218 amount=-3\n"	\
-                               "kerning first=221 second=58 amount=-1\n"	\
-                               "kerning first=193 second=84 amount=-1\n"	\
-                               "kerning first=196 second=8218 amount=1\n"	\
-                               "kerning first=193 second=87 amount=-1\n"	\
-                               "kerning first=193 second=255 amount=-1\n"	\
-                               "kerning first=376 second=232 amount=-1\n"	\
-                               "kerning first=376 second=233 amount=-1\n"	\
-                               "kerning first=356 second=59 amount=-1\n"	\
-                               "kerning first=88 second=214 amount=-1\n"	\
-                               "kerning first=340 second=356 amount=-1\n"	\
-                               "kerning first=84 second=252 amount=-2\n"	\
-                               "kerning first=89 second=227 amount=-1\n"	\
-                               "kerning first=89 second=230 amount=-1\n"	\
-                               "kerning first=214 second=88 amount=-1\n"	\
-                               "kerning first=84 second=248 amount=-1\n"	\
-                               "kerning first=45 second=376 amount=-2\n"	\
-                               "kerning first=258 second=89 amount=-2\n"	\
-                               "kerning first=356 second=283 amount=-2\n"	\
-                               "kerning first=8216 second=196 amount=-2\n"	\
-                               "kerning first=195 second=86 amount=-1\n"	\
-                               "kerning first=75 second=253 amount=-1\n"	\
-                               "kerning first=87 second=229 amount=-1\n"	\
-                               "kerning first=313 second=216 amount=-1\n"	\
-                               "kerning first=76 second=221 amount=-2\n"	\
-                               "kerning first=193 second=354 amount=-1\n"	\
-                               "kerning first=317 second=86 amount=-2\n"	\
-                               "kerning first=84 second=232 amount=-2\n"	\
-                               "kerning first=221 second=117 amount=-1\n"	\
-                               "kerning first=221 second=8218 amount=-3\n"	\
-                               "kerning first=221 second=233 amount=-1\n"	\
-                               "kerning first=84 second=253 amount=-2\n"	\
-                               "kerning first=376 second=58 amount=-1\n"	\
-                               "kerning first=80 second=8218 amount=-3\n"	\
-                               "kerning first=89 second=249 amount=-1\n"	\
-                               "kerning first=192 second=89 amount=-2\n"	\
-                               "kerning first=221 second=249 amount=-1\n"	\
-                               "kerning first=376 second=228 amount=-1\n"	\
-                               "kerning first=193 second=372 amount=-1\n"	\
-                               "kerning first=87 second=225 amount=-1\n"	\
-                               "kerning first=340 second=255 amount=-1\n"	\
-                               "kerning first=86 second=227 amount=-1\n"	\
-                               "kerning first=192 second=374 amount=-2\n"	\
-                               "kerning first=45 second=89 amount=-2\n"	\
-                               "kerning first=376 second=283 amount=-1\n"	\
-                               "kerning first=256 second=86 amount=-1\n"	\
-                               "kerning first=313 second=253 amount=-1\n"	\
-                               "kerning first=89 second=67 amount=-1\n"	\
-                               "kerning first=313 second=79 amount=-1\n"	\
-                               "kerning first=256 second=8221 amount=-1\n"	\
-                               "kerning first=264 second=8221 amount=1\n"	\
-                               "kerning first=260 second=84 amount=-1\n"	\
-                               "kerning first=86 second=242 amount=-1\n"	\
-                               "kerning first=376 second=111 amount=-1\n"	\
-                               "kerning first=89 second=268 amount=-1\n"	\
-                               "kerning first=221 second=250 amount=-1\n"	\
-                               "kerning first=258 second=253 amount=-1\n"	\
-                               "kerning first=194 second=375 amount=-1\n"	\
-                               "kerning first=87 second=194 amount=-1\n"	\
-                               "kerning first=87 second=227 amount=-1\n"	\
-                               "kerning first=350 second=352 amount=-1\n"	\
-                               "kerning first=321 second=212 amount=-1\n"	\
-                               "kerning first=321 second=121 amount=-1\n"	\
-                               "kerning first=317 second=87 amount=-1\n"	\
-                               "kerning first=260 second=354 amount=-1\n"	\
-                               "kerning first=86 second=111 amount=-1\n"	\
-                               "kerning first=192 second=8218 amount=1\n"	\
-                               "kerning first=84 second=46 amount=-2\n"	\
-                               "kerning first=213 second=376 amount=-1\n"	\
-                               "kerning first=321 second=376 amount=-2\n"	\
-                               "kerning first=70 second=367 amount=-1\n"	\
-                               "kerning first=376 second=213 amount=-1\n"	\
-                               "kerning first=258 second=374 amount=-2\n"	\
-                               "kerning first=321 second=366 amount=-1\n"	\
-                               "kerning first=211 second=221 amount=-1\n"	\
-                               "kerning first=221 second=212 amount=-1\n"	\
-                               "kerning first=86 second=243 amount=-1\n"	\
-                               "kerning first=88 second=262 amount=-1\n"	\
-                               "kerning first=89 second=229 amount=-1\n"	\
-                               "kerning first=258 second=221 amount=-2\n"	\
-                               "kerning first=87 second=248 amount=-1\n"	\
-                               "kerning first=195 second=8221 amount=-1\n"	\
-                               "kerning first=70 second=232 amount=-1\n"	\
-                               "kerning first=376 second=250 amount=-1\n"	\
-                               "kerning first=70 second=253 amount=-1\n"	\
-                               "kerning first=313 second=217 amount=-1\n"	\
-                               "kerning first=86 second=228 amount=-1\n"	\
-                               "kerning first=89 second=248 amount=-1\n"	\
-                               "kerning first=211 second=88 amount=-1\n"	\
-                               "kerning first=80 second=192 amount=-1\n"	\
-                               "kerning first=221 second=101 amount=-1\n"	\
-                               "kerning first=256 second=87 amount=-1\n"	\
-                               "kerning first=89 second=211 amount=-1\n"	\
-                               "kerning first=87 second=226 amount=-1\n"	\
-                               "kerning first=260 second=8218 amount=1\n"	\
-                               "kerning first=86 second=249 amount=-1\n"	\
-                               "kerning first=76 second=211 amount=-1\n"	\
-                               "kerning first=45 second=221 amount=-2\n"	\
-                               "kerning first=221 second=213 amount=-1\n"	\
-                               "kerning first=221 second=244 amount=-1\n"	\
-                               "kerning first=376 second=192 amount=-2\n"	\
-                               "kerning first=8216 second=195 amount=-2\n"	\
-                               "kerning first=313 second=89 amount=-2\n"	\
-                               "kerning first=356 second=230 amount=-2\n"	\
-                               "kerning first=65 second=8221 amount=-1\n"	\
-                               "kerning first=221 second=367 amount=-1\n"	\
-                               "kerning first=376 second=234 amount=-1\n"	\
-                               "kerning first=76 second=210 amount=-1\n"	\
-                               "kerning first=70 second=242 amount=-1\n"	\
-                               "kerning first=221 second=339 amount=-1\n"	\
-                               "kerning first=8218 second=376 amount=-3\n"	\
-                               "kerning first=345 second=44 amount=-2\n"	\
-                               "kerning first=66 second=376 amount=-1\n"	\
-                               "kerning first=376 second=262 amount=-1\n"	\
-                               "kerning first=70 second=46 amount=-2\n"	\
-                               "kerning first=195 second=87 amount=-1\n"	\
-                               "kerning first=221 second=111 amount=-1\n"	\
-                               "kerning first=210 second=376 amount=-1\n"	\
-                               "kerning first=89 second=338 amount=-1\n"	\
-                               "kerning first=341 second=8217 amount=1\n"	\
-                               "kerning first=221 second=192 amount=-2\n"	\
-                               "kerning first=8220 second=198 amount=-2\n"	\
-                               "kerning first=356 second=351 amount=-2\n"	\
-                               "kerning first=87 second=45 amount=-1\n"	\
-                               "kerning first=321 second=79 amount=-1\n"	\
-                               "kerning first=258 second=8222 amount=1\n"	\
-                               "kerning first=76 second=8221 amount=-4\n"	\
-                               "kerning first=118 second=44 amount=-1\n"	\
-                               "kerning first=356 second=249 amount=-2\n"	\
-                               "kerning first=86 second=196 amount=-1\n"	\
-                               "kerning first=68 second=376 amount=-1\n"	\
-                               "kerning first=84 second=263 amount=-2\n"	\
-                               "kerning first=376 second=44 amount=-3\n"	\
-                               "kerning first=65 second=87 amount=-1\n"	\
-                               "kerning first=196 second=255 amount=-1\n"	\
-                               "kerning first=313 second=338 amount=-1\n"	\
-                               "kerning first=66 second=89 amount=-1\n"	\
-                               "kerning first=317 second=218 amount=-1\n"	\
-                               "kerning first=376 second=194 amount=-2\n"	\
-                               "kerning first=340 second=221 amount=-1\n"	\
-                               "kerning first=84 second=225 amount=-2\n"	\
-                               "kerning first=194 second=8218 amount=1\n"	\
-                               "kerning first=321 second=8217 amount=-3\n"	\
-                               "kerning first=256 second=118 amount=-1\n"	\
-                               "kerning first=258 second=255 amount=-1\n"	\
-                               "kerning first=264 second=8217 amount=1\n"	\
-                               "kerning first=8222 second=376 amount=-3\n"	\
-                               "kerning first=76 second=212 amount=-1\n";
-
-
-
+                               "ke 121 46 -1\nke 8220 65 -2\nke 194 121 -1\nke 87 234 -1\nke 221 79 -1\nke 86 233 -1\nke 84 45 -2\nke 89 195 -2\nke 67 8217 1\nke 356 44 -2\nke 88 79 -1\nke 87 193 -1\n"	\
+                               "ke 70 58 -1\nke 70 59 -1\nke 221 65 -2\nke 221 97 -1\nke 75 255 -1\nke 76 79 -1\nke 114 8217 1\nke 256 84 -1\nke 76 85 -1\nke 193 86 -1\nke 119 44 -1\nke 45 88 -1\n"	\
+                               "ke 8216 89 1\nke 313 121 -1\nke 376 97 -1\nke 84 99 -2\nke 86 8222 -1\nke 356 235 -2\nke 86 58 -1\nke 320 108 -2\nke 8220 195 -2\nke 376 101 -1\nke 70 114 -1\nke 84 115 -2\n"	\
+                               "ke 70 117 -1\nke 196 118 -1\nke 84 119 -2\nke 70 250 -1\nke 196 121 -1\nke 75 214 -1\nke 192 253 -1\nke 88 213 -1\nke 193 356 -1\nke 216 88 -1\nke 82 84 -1\nke 356 229 -2\n"	\
+                               "ke 376 227 -1\nke 221 46 -3\nke 260 372 -1\nke 75 121 -1\nke 376 339 -1\nke 376 193 -2\nke 356 194 -1\nke 70 195 -2\nke 89 196 -2\nke 75 199 -1\nke 87 283 -1\nke 195 374 -2\n"	\
+                               "ke 84 243 -2\nke 356 46 -2\nke 84 246 -1\nke 313 211 -1\nke 89 58 -1\nke 313 214 -1\nke 356 367 -2\nke 317 216 -1\nke 76 217 -1\nke 313 218 -1\nke 321 219 -1\nke 212 221 -1\n"	\
+                               "ke 317 210 -1\nke 344 221 -1\nke 87 224 -1\nke 70 225 -1\nke 356 226 -2\nke 221 227 -1\nke 356 232 -2\nke 221 229 -1\nke 70 230 -1\nke 84 231 -2\nke 89 232 -1\nke 84 234 -2\n"	\
+                               "ke 70 235 -1\nke 195 89 -2\nke 87 242 -1\nke 84 242 -1\nke 356 243 -2\nke 356 245 -2\nke 70 246 -1\nke 87 97 -1\nke 70 248 -1\nke 84 249 -2\nke 356 341 -2\nke 356 251 -2\n"	\
+                               "ke 70 252 -1\nke 317 253 -1\nke 344 255 -1\nke 86 339 -1\nke 87 196 -1\nke 70 258 -2\nke 70 259 -1\nke 70 260 -2\nke 70 261 -1\nke 86 246 -1\nke 75 268 -1\nke 84 269 -2\n"	\
+                               "ke 321 255 -1\nke 8222 87 -2\nke 356 117 -2\nke 70 275 -1\nke 70 277 -1\nke 70 279 -1\nke 192 121 -1\nke 70 281 -1\nke 86 244 -1\nke 84 283 -2\nke 376 249 -1\nke 260 375 -1\n"	\
+                               "ke 8218 84 -3\nke 76 220 -1\nke 118 46 -1\nke 88 268 -1\nke 65 89 -2\nke 86 195 -1\nke 84 8222 -2\nke 376 224 -1\nke 194 8222 1\nke 86 252 -1\nke 75 211 -1\nke 211 376 -1\n"	\
+                               "ke 376 79 -1\nke 193 8221 -1\nke 256 374 -2\nke 344 89 -1\nke 102 44 -1\nke 313 356 -3\nke 221 224 -1\nke 70 333 -1\nke 70 335 -1\nke 70 337 -1\nke 75 338 -1\nke 84 339 -1\n"	\
+                               "ke 70 341 -1\nke 70 343 -1\nke 70 345 -1\nke 83 350 -1\nke 258 121 -1\nke 83 352 -1\nke 84 353 -2\nke 65 354 -1\nke 76 86 -2\nke 89 250 -1\nke 70 361 -1\nke 70 363 -1\n"	\
+                               "ke 102 8221 1\nke 70 365 -1\nke 313 366 -1\nke 376 367 -1\nke 258 376 -2\nke 70 369 -1\nke 344 376 -1\nke 70 371 -1\nke 194 372 -1\nke 65 374 -2\nke 65 375 -1\n"	\
+                               "ke 214 376 -1\nke 8220 194 -2\nke 70 193 -2\nke 256 221 -2\nke 79 221 -1\nke 195 221 -2\nke 80 196 -1\nke 256 253 -1\nke 66 372 -1\nke 313 8217 -4\nke 321 217 -1\nke 88 199 -1\n"	\
+                               "ke 199 8217 1\nke 89 192 -2\nke 341 46 -2\nke 258 354 -1\nke 65 86 -1\nke 221 211 -1\nke 86 192 -1\nke 317 221 -2\nke 89 212 -1\nke 211 89 -1\nke 258 84 -1\nke 84 351 -2\n"	\
+                               "ke 221 268 -1\nke 213 88 -1\nke 89 367 -1\nke 356 114 -2\nke 321 356 -3\nke 313 376 -2\nke 196 372 -1\nke 214 89 -1\nke 8216 376 1\nke 270 374 -1\nke 80 44 -3\nke 70 283 -1\n"	\
+                               "ke 76 253 -1\nke 376 246 -1\nke 89 45 -2\nke 70 228 -1\nke 321 221 -2\nke 70 121 -1\nke 260 8222 1\nke 376 235 -1\nke 70 97 -1\nke 260 255 -1\nke 321 211 -1\nke 317 213 -1\n"	\
+                               "ke 8222 86 -2\nke 344 121 -1\nke 221 214 -1\nke 272 374 -1\nke 376 65 -2\nke 194 255 -1\nke 84 196 -1\nke 8222 89 -3\nke 196 375 -1\nke 86 250 -1\nke 260 8217 -1\nke 356 111 -2\n"	\
+                               "ke 68 374 -1\nke 376 251 -1\nke 345 46 -2\nke 376 243 -1\nke 65 253 -1\nke 8220 192 -2\nke 84 97 -2\nke 221 235 -1\nke 313 85 -1\nke 262 8221 1\nke 87 245 -1\nke 317 366 -1\n"	\
+                               "ke 350 83 -1\nke 321 216 -1\nke 192 86 -1\nke 70 233 -1\nke 68 221 -1\nke 193 8218 1\nke 356 193 -1\nke 89 226 -1\nke 221 243 -1\nke 221 228 -1\nke 84 226 -1\nke 221 251 -1\n"	\
+                               "ke 84 58 -1\nke 376 199 -1\nke 84 229 -1\nke 221 210 -1\nke 75 45 -1\nke 80 195 -1\nke 344 356 -1\nke 192 255 -1\nke 84 244 -1\nke 84 235 -2\nke 272 89 -1\nke 212 376 -1\n"	\
+                               "ke 221 225 -1\nke 8216 74 -1\nke 84 255 -2\nke 356 253 -2\nke 195 376 -2\nke 376 210 -1\nke 84 367 -2\nke 86 235 -1\nke 70 192 -2\nke 341 44 -2\nke 70 65 -2\nke 221 199 -1\n"	\
+                               "ke 89 97 -1\nke 210 221 -1\nke 84 233 -2\nke 88 211 -1\nke 84 8218 -2\nke 317 79 -1\nke 221 195 -2\nke 82 376 -1\nke 356 224 -2\nke 212 89 -1\nke 8222 84 -3\nke 8218 87 -2\n"	\
+                               "ke 76 216 -1\nke 196 374 -2\nke 84 345 -2\nke 313 86 -2\nke 86 224 -1\nke 321 85 -1\nke 89 46 -3\nke 196 221 -2\nke 270 376 -1\nke 221 246 -1\nke 87 228 -1\nke 193 375 -1\n"	\
+                               "ke 76 84 -3\nke 376 225 -1\nke 84 121 -2\nke 356 242 -2\nke 89 251 -1\nke 194 84 -1\nke 260 221 -2\nke 89 59 -1\nke 272 221 -1\nke 70 44 -3\nke 87 232 -1\nke 87 244 -1\n"	\
+                               "ke 80 46 -3\nke 376 248 -1\nke 260 356 -1\nke 76 121 -1\nke 313 219 -1\nke 70 256 -2\nke 89 101 -1\nke 356 263 -2\nke 8222 356 -3\nke 317 376 -2\nke 221 232 -1\n"	\
+                               "ke 70 255 -1\nke 70 244 -1\nke 258 118 -1\nke 258 372 -1\nke 88 338 -1\nke 89 283 -1\nke 208 374 -1\nke 268 8221 1\nke 196 8221 -1\nke 352 350 -1\nke 321 86 -2\nke 196 8222 1\n"	\
+                               "ke 376 8222 -2\nke 8216 192 -2\nke 76 366 -1\nke 376 195 -2\nke 8218 356 -3\nke 260 118 -1\nke 376 67 -1\nke 270 221 -1\nke 196 87 -1\nke 210 88 -1\nke 221 262 -1\nke 344 253 -1\n"	\
+                               "ke 192 354 -1\nke 70 111 -1\nke 356 353 -2\nke 102 8217 1\nke 194 87 -1\nke 376 46 -3\nke 87 233 -1\nke 88 210 -1\nke 89 245 -1\nke 70 224 -1\nke 86 45 -1\nke 82 253 -1\n"	\
+                               "ke 80 8222 -3\nke 221 8222 -2\nke 192 84 -1\nke 79 376 -1\nke 193 8217 -1\nke 86 8218 -2\nke 86 194 -1\nke 260 8221 -1\nke 256 8222 1\nke 68 89 -1\nke 193 374 -2\nke 317 89 -2\n"	\
+                               "ke 65 84 -1\nke 356 196 -1\nke 89 224 -1\nke 84 59 -1\nke 65 255 -1\nke 87 192 -1\nke 321 210 -1\nke 195 121 -1\nke 221 194 -2\nke 268 8217 1\nke 356 255 -2\nke 102 46 -1\n"	\
+                               "ke 221 252 -1\nke 70 245 -1\nke 89 244 -1\nke 8220 196 -2\nke 212 88 -1\nke 193 221 -2\nke 84 117 -2\nke 376 268 -1\nke 194 118 -1\nke 76 255 -1\nke 193 253 -1\nke 86 230 -1\n"	\
+                               "ke 84 111 -2\nke 84 228 -1\nke 356 195 -1\nke 356 248 -1\nke 195 354 -1\nke 313 213 -1\nke 317 338 -1\nke 70 234 -1\nke 89 246 -1\nke 376 252 -1\nke 352 83 -1\nke 75 262 -1\n"	\
+                               "ke 65 8218 1\nke 356 269 -2\nke 65 376 -2\nke 45 86 -1\nke 76 218 -1\nke 79 89 -1\nke 256 89 -2\nke 321 8221 -3\nke 86 251 -1\nke 45 356 -2\nke 317 8221 -4\nke 317 212 -1\n"	\
+                               "ke 76 376 -2\nke 256 354 -1\nke 221 245 -1\nke 356 115 -2\nke 88 216 -1\nke 89 44 -3\nke 194 86 -1\nke 376 59 -1\nke 70 229 -1\nke 86 97 -1\nke 221 45 -2\nke 89 214 -1\n"	\
+                               "ke 70 101 -1\nke 89 8222 -2\nke 255 44 -1\nke 114 44 -2\nke 66 221 -1\nke 8216 198 -2\nke 317 121 -1\nke 195 8218 1\nke 321 87 -1\nke 89 233 -1\nke 192 376 -2\nke 270 89 -1\n"	\
+                               "ke 84 192 -1\nke 88 67 -1\nke 89 193 -2\nke 272 376 -1\nke 89 235 -1\nke 317 84 -3\nke 199 8221 1\nke 321 214 -1\nke 87 44 -1\nke 356 65 -1\nke 317 217 -1\nke 256 121 -1\n"	\
+                               "ke 266 8217 1\nke 89 243 -1\nke 86 283 -1\nke 221 226 -1\nke 89 65 -2\nke 86 225 -1\nke 260 87 -1\nke 256 8218 1\nke 376 226 -1\nke 321 220 -1\nke 87 111 -1\nke 321 213 -1\n"	\
+                               "ke 66 86 -1\nke 70 194 -2\nke 356 121 -2\nke 8218 89 -3\nke 89 210 -1\nke 262 8217 1\nke 89 225 -1\nke 317 356 -3\nke 89 228 -1\nke 356 8218 -2\nke 210 89 -1\nke 258 86 -1\n"	\
+                               "ke 356 225 -2\nke 376 242 -1\nke 86 44 -2\nke 87 243 -1\nke 84 101 -2\nke 313 210 -1\nke 84 227 -1\nke 82 89 -1\nke 192 356 -1\nke 196 354 -1\nke 376 212 -1\nke 195 375 -1\n"	\
+                               "ke 89 199 -1\nke 194 356 -1\nke 82 121 -1\nke 376 45 -2\nke 260 89 -2\nke 89 252 -1\nke 196 376 -2\nke 66 87 -1\nke 76 338 -1\nke 340 376 -1\nke 317 214 -1\nke 194 221 -2\n"	\
+                               "ke 196 86 -1\nke 221 234 -1\nke 253 44 -1\nke 313 221 -2\nke 313 84 -3\nke 356 99 -2\nke 266 8221 1\nke 194 8221 -1\nke 89 234 -1\nke 87 230 -1\nke 65 372 -1\nke 256 375 -1\n"	\
+                               "ke 75 79 -1\nke 221 242 -1\nke 86 65 -1\nke 8216 65 -2\nke 75 210 -1\nke 221 59 -1\nke 321 218 -1\nke 258 8217 -1\nke 356 58 -1\nke 65 118 -1\nke 70 243 -1\nke 256 255 -1\n"	\
+                               "ke 321 84 -3\nke 87 195 -1\nke 70 227 -1\nke 82 356 -1\nke 376 245 -1\nke 8216 221 1\nke 221 230 -1\nke 194 374 -2\nke 195 118 -1\nke 195 372 -1\nke 213 89 -1\nke 321 89 -2\n"	\
+                               "ke 317 211 -1\nke 221 283 -1\nke 313 8221 -4\nke 84 194 -1\nke 356 228 -2\nke 88 45 -1\nke 84 224 -1\nke 255 46 -1\nke 87 101 -1\nke 208 221 -1\nke 345 8217 1\nke 89 117 -1\n"	\
+                               "ke 313 87 -1\nke 356 233 -2\nke 350 350 -1\nke 321 338 -1\nke 89 8218 -3\nke 89 262 -1\nke 195 255 -1\nke 208 376 -1\nke 86 248 -1\nke 82 221 -1\nke 256 372 -1\nke 87 339 -1\n"	\
+                               "ke 340 253 -1\nke 196 253 -1\nke 80 194 -1\nke 193 121 -1\nke 356 8222 -2\nke 193 376 -2\nke 221 67 -1\nke 86 101 -1\nke 260 376 -2\nke 256 356 -1\nke 84 44 -2\nke 66 374 -1\n"	\
+                               "ke 76 356 -3\nke 221 196 -2\nke 76 89 -2\nke 317 219 -1\nke 87 235 -1\nke 65 121 -1\nke 86 232 -1\nke 321 253 -1\nke 356 250 -2\nke 84 230 -2\nke 86 245 -1\nke 313 255 -1\n"	\
+                               "ke 192 118 -1\nke 89 194 -2\nke 70 251 -1\nke 86 59 -1\nke 86 234 -1\nke 87 246 -1\nke 192 8222 1\nke 317 8217 -4\nke 89 79 -1\nke 86 117 -1\nke 70 249 -1\nke 8218 221 -3\n"	\
+                               "ke 89 213 -1\nke 76 214 -1\nke 213 221 -1\nke 84 245 -1\nke 258 356 -1\nke 45 84 -2\nke 192 375 -1\nke 221 248 -1\nke 356 252 -2\nke 356 192 -1\nke 260 86 -1\nke 86 46 -2\n"	\
+                               "ke 356 246 -2\nke 260 374 -2\nke 376 196 -2\nke 193 89 -2\nke 256 8217 -1\nke 376 230 -1\nke 356 244 -2\nke 195 8217 -1\nke 195 356 -1\nke 221 44 -3\nke 84 65 -1\nke 196 356 -1\n"	\
+                               "ke 196 89 -2\nke 340 89 -1\nke 86 226 -1\nke 356 231 -2\nke 256 376 -2\nke 194 8217 -1\nke 70 257 -1\nke 356 45 -2\nke 65 8222 1\nke 80 65 -1\nke 89 339 -1\nke 193 8222 1\n"	\
+                               "ke 8220 74 -1\nke 356 339 -1\nke 313 220 -1\nke 8216 194 -2\nke 317 255 -1\nke 84 251 -2\nke 258 8218 1\nke 87 46 -1\nke 45 87 -1\nke 258 87 -1\nke 8218 86 -2\nke 352 352 -1\n"	\
+                               "ke 86 229 -1\nke 65 8217 -1\nke 89 111 -1\nke 376 338 -1\nke 221 338 -1\nke 119 46 -1\nke 65 356 -1\nke 196 8217 -1\nke 221 193 -2\nke 80 193 -1\nke 88 212 -1\nke 356 227 -2\n"	\
+                               "ke 195 8222 1\nke 344 84 -1\nke 195 253 -1\nke 67 8221 1\nke 260 253 -1\nke 76 219 -1\nke 376 211 -1\nke 114 46 -2\nke 83 83 -1\nke 75 213 -1\nke 317 85 -1\nke 82 255 -1\n"	\
+                               "ke 86 367 -1\nke 192 372 -1\nke 79 88 -1\nke 70 8218 -3\nke 70 339 -1\nke 253 46 -1\nke 76 87 -1\nke 76 8217 -4\nke 70 8222 -3\nke 192 221 -2\nke 84 114 -2\nke 356 119 -2\n"	\
+                               "ke 194 376 -2\nke 86 193 -1\nke 192 8221 -1\nke 208 89 -1\nke 8220 193 -2\nke 87 65 -1\nke 194 253 -1\nke 376 214 -1\nke 76 213 -1\nke 70 196 -2\nke 84 341 -2\nke 313 212 -1\n"	\
+                               "ke 258 375 -1\nke 340 121 -1\nke 192 87 -1\nke 356 97 -2\nke 75 212 -1\nke 260 121 -1\nke 376 244 -1\nke 376 229 -1\nke 356 101 -2\nke 356 345 -2\nke 194 89 -2\nke 70 226 -1\n"	\
+                               "ke 192 8217 -1\nke 84 193 -1\nke 195 84 -1\nke 258 8221 -1\nke 84 250 -2\nke 317 220 -1\nke 356 234 -2\nke 193 118 -1\nke 121 44 -1\nke 214 221 -1\nke 340 84 -1\nke 196 84 -1\n"	\
+                               "ke 8216 193 -2\nke 75 67 -1\nke 8222 221 -3\nke 194 354 -1\nke 70 375 -1\nke 89 242 -1\nke 65 221 -2\nke 84 195 -1\nke 376 117 -1\nke 376 8218 -3\nke 221 58 -1\nke 193 84 -1\n"	\
+                               "ke 196 8218 1\nke 193 87 -1\nke 193 255 -1\nke 376 232 -1\nke 376 233 -1\nke 356 59 -1\nke 88 214 -1\nke 340 356 -1\nke 84 252 -2\nke 89 227 -1\nke 89 230 -1\nke 214 88 -1\n"	\
+                               "ke 84 248 -1\nke 45 376 -2\nke 258 89 -2\nke 356 283 -2\nke 8216 196 -2\nke 195 86 -1\nke 75 253 -1\nke 87 229 -1\nke 313 216 -1\nke 76 221 -2\nke 193 354 -1\nke 317 86 -2\n"	\
+                               "ke 84 232 -2\nke 221 117 -1\nke 221 8218 -3\nke 221 233 -1\nke 84 253 -2\nke 376 58 -1\nke 80 8218 -3\nke 89 249 -1\nke 192 89 -2\nke 221 249 -1\nke 376 228 -1\nke 193 372 -1\n"	\
+                               "ke 87 225 -1\nke 340 255 -1\nke 86 227 -1\nke 192 374 -2\nke 45 89 -2\nke 376 283 -1\nke 256 86 -1\nke 313 253 -1\nke 89 67 -1\nke 313 79 -1\nke 256 8221 -1\nke 264 8221 1\n"	\
+                               "ke 260 84 -1\nke 86 242 -1\nke 376 111 -1\nke 89 268 -1\nke 221 250 -1\nke 258 253 -1\nke 194 375 -1\nke 87 194 -1\nke 87 227 -1\nke 350 352 -1\nke 321 212 -1\nke 321 121 -1\n"	\
+                               "ke 317 87 -1\nke 260 354 -1\nke 86 111 -1\nke 192 8218 1\nke 84 46 -2\nke 213 376 -1\nke 321 376 -2\nke 70 367 -1\nke 376 213 -1\nke 258 374 -2\nke 321 366 -1\nke 211 221 -1\n"	\
+                               "ke 221 212 -1\nke 86 243 -1\nke 88 262 -1\nke 89 229 -1\nke 258 221 -2\nke 87 248 -1\nke 195 8221 -1\nke 70 232 -1\nke 376 250 -1\nke 70 253 -1\nke 313 217 -1\nke 86 228 -1\n"	\
+                               "ke 89 248 -1\nke 211 88 -1\nke 80 192 -1\nke 221 101 -1\nke 256 87 -1\nke 89 211 -1\nke 87 226 -1\nke 260 8218 1\nke 86 249 -1\nke 76 211 -1\nke 45 221 -2\nke 221 213 -1\n"	\
+                               "ke 221 244 -1\nke 376 192 -2\nke 8216 195 -2\nke 313 89 -2\nke 356 230 -2\nke 65 8221 -1\nke 221 367 -1\nke 376 234 -1\nke 76 210 -1\nke 70 242 -1\nke 221 339 -1\nke 8218 376 -3\n"	\
+                               "ke 345 44 -2\nke 66 376 -1\nke 376 262 -1\nke 70 46 -2\nke 195 87 -1\nke 221 111 -1\nke 210 376 -1\nke 89 338 -1\nke 341 8217 1\nke 221 192 -2\nke 8220 198 -2\nke 356 351 -2\n"	\
+                               "ke 87 45 -1\nke 321 79 -1\nke 258 8222 1\nke 76 8221 -4\nke 118 44 -1\nke 356 249 -2\nke 86 196 -1\nke 68 376 -1\nke 84 263 -2\nke 376 44 -3\nke 65 87 -1\nke 196 255 -1\n"	\
+                               "ke 313 338 -1\nke 66 89 -1\nke 317 218 -1\nke 376 194 -2\nke 340 221 -1\nke 84 225 -2\nke 194 8218 1\nke 321 8217 -3\nke 256 118 -1\nke 258 255 -1\nke 264 8217 1\nke 8222 376 -3\n"	\
+                               "ke 76 212 -1\n";
 
         fntFileOut.resize(sizeof(fntData)/sizeof(fntData[0]));
         memcpy(&fntFileOut[0],fntData,fntFileOut.size());
