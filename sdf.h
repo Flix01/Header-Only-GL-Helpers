@@ -1124,7 +1124,7 @@ struct SdfCharset {
         //"char id=34      x=97   y=386  width=10   height=9    xoffset=-1   yoffset=1    xadvance=8    page=0    chnl=0 \n"
         //"kerning first=121 second=46 amount=-1\n"
         // into:
-        //"ch 34 97 386 10 9 -1 1 8 0 0\n"
+        //"ch id=34 97 386 10 9 -1 1 8 0 0\n"
         //"ke 121 46 -1\n"
         // to reduce size of embedded font text
 
@@ -2558,7 +2558,7 @@ bool SdfCharset::GetEmbeddedFontData(SdfVector<char>& fntFileOut,SdfVector<unsig
     {
         /* We've used this 'text compression' trick here:
         "char id=34      x=97   y=386  width=10   height=9    xoffset=-1   yoffset=1    xadvance=8    page=0    chnl=0 \n"
-        "ch 34 97 386 10 9 -1 1 8 0 0\n"
+        "ch id=34 97 386 10 9 -1 1 8 0 0\n"
         and here:
         "kerning first=121 second=46 amount=-1\n"
         "ke 121 46 -1\n"
