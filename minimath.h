@@ -120,7 +120,7 @@ TODO:
 #define MINIMATH_H_
 
 #define NM_VERSION               "1.0 WIP"
-#define NM_VERSION_NUM           0002
+#define NM_VERSION_NUM           0003
 
 #ifdef NM_HAS_CFG
 #   include "minimath_cfg.h"
@@ -1486,8 +1486,11 @@ NM_PRE_ALIGN_DEFAULT struct mat4 {
     mat4 inverted() const;
     int invert();
 
-    mat4 invertedFast() const;
-    void invertFast();
+    mat4 invertedTransformMatrixWithoutScaling() const;
+    void invertTransformMatrixWithoutScaling();
+
+    mat4 invertedTransformMatrix() const;
+    void invertTransformMatrix();
 
     void invertXZAxis();
     mat4 invertedXZAxis() const;
@@ -1540,8 +1543,10 @@ NM_API_DEF_EXT_INL const mat4* mat4_transposed(mat4* dst,const mat4* src);
 NM_API_DEF_EXT_INL void mat4_transpose(mat4* m);
 NM_API_DEF_EXT_INL const mat4* mat4_inverted(mat4* dst,const mat4* src);
 NM_API_DEF_EXT_INL int mat4_invert(mat4* m);
-NM_API_DEF_EXT_INL const mat4* mat4_invertedFast(mat4* dst,const mat4* src);
-NM_API_DEF_EXT_INL void mat4_invertFast(mat4* m);
+NM_API_DEF_EXT_INL const mat4* mat4_invertedTransformMatrixWithoutScaling(mat4* dst,const mat4* src);
+NM_API_DEF_EXT_INL void mat4_invertTransformMatrixWithoutScaling(mat4* m);
+NM_API_DEF_EXT_INL const mat4* mat4_invertedTransformMatrix(mat4* dst,const mat4* src);
+NM_API_DEF_EXT_INL void mat4_invertTransformMatrix(mat4* m);
 NM_API_DEF_EXT_INL const mat4* mat4_invertedXZAxis(mat4* dst,const mat4* src);
 NM_API_DEF_EXT_INL void mat4_invertXZAxis(mat4* m);
 
@@ -1592,8 +1597,10 @@ NM_API_INL void mat4::setQuaternionToMatrixRotation(const quat& q)  {mat4_setQua
 NM_API_INL mat4 mat4::slerp(const mat4& o,nmoat slerpTime_In_0_1) const {mat4 rv;mat4_slerp(&rv,this,&o,slerpTime_In_0_1);return rv;}
 NM_API_INL mat4 mat4::inverted() const	{mat4 o;mat4_inverted(&o,this);return o;}
 NM_API_INL int mat4::invert() {return mat4_invert(this);}
-NM_API_INL mat4 mat4::invertedFast() const {mat4 o;mat4_invertedFast(&o,this);return o;}
-NM_API_INL void mat4::invertFast() {mat4_invertedFast(this,this);}
+NM_API_INL mat4 mat4::invertedTransformMatrixWithoutScaling() const {mat4 o;mat4_invertedTransformMatrixWithoutScaling(&o,this);return o;}
+NM_API_INL void mat4::invertTransformMatrixWithoutScaling() {mat4_invertedTransformMatrixWithoutScaling(this,this);}
+NM_API_INL mat4 mat4::invertedTransformMatrix() const {mat4 o;mat4_invertedTransformMatrix(&o,this);return o;}
+NM_API_INL void mat4::invertTransformMatrix() {mat4_invertedTransformMatrix(this,this);}
 NM_API_INL void mat4::invertXZAxis()  {mat4_invertXZAxis(this);}
 NM_API_INL mat4 mat4::invertedXZAxis() const {mat4 o=*this;mat4_invertXZAxis(&o);return o;}
 NM_API_INL mat4& mat4::translate(nmoat x,nmoat y,nmoat z) {nm_Mat4Translate(m,x,y,z);return *this;}
@@ -2276,15 +2283,15 @@ NM_API_IMPL void nm_QuatConjugate(nmoat* NM_RESTRICT q4)    {q4[0]=-q4[0];q4[1]=
 NM_API_IMPL nmoat* nm_QuatInverted(nmoat* NM_RESTRICT qOut4,const nmoat* NM_RESTRICT q4)   {nmoat d = -nm_QuatDot(q4,q4);qOut4[3]=-q4[3]/d;qOut4[0]=q4[0]/d;qOut4[1]=q4[1]/d;qOut4[2]=q4[2]/d;return qOut4;}
 NM_API_IMPL void nm_QuatInverse(nmoat* NM_RESTRICT q4)  {nmoat d = -nm_QuatDot(q4,q4);q4[3]/=-d;q4[0]/=d;q4[1]/=d;q4[2]/=d;}
 NM_API_IMPL nmoat* nm_QuatMulVec3(nmoat* NM_RESTRICT vOut3,const nmoat* NM_RESTRICT q4,const nmoat* NM_RESTRICT vIn3)   {
-//#define NM_QUAT_MULVEC_OPT
+#define NM_QUAT_MULVEC_OPT
 #   ifndef NM_QUAT_MULVEC_OPT
     nmoat uv[3],uuv[3];int i;
     nm_Vec3Cross(uuv,q4,nm_Vec3Cross(uv,q4,vIn3));
     for (i=0;i<3;i++) vOut3[i] = vIn3[i] + ((uv[i] * q4[3]) + uuv[i]) * (nmoat)2;
     return vOut3;
 #   else //NM_QUAT_MULVEC_OPT
-    /*ROTATING A VECTOR BY AN UNIT QUATERNION (FASTER):
-    =================================================
+    /*ROTATING A VECTOR BY AN UNIT QUATERNION (FASTER?):
+    ====================================================
     t:=cross(2q(x,y,z),v);
     v2 = (q*v*q`)(x,y,z) = v+q(w)*t + cross(q(x,y,z),t);
     [But still doing a 3x3 matrix * v is faster]*/
@@ -4568,8 +4575,10 @@ NM_API_IMPL const mat4* mat4_transposed(mat4* dst,const mat4* src)  {nm_Mat4Tran
 NM_API_IMPL void mat4_transpose(mat4* m) {nmoat s01=m->m01,s02=m->m02,s03=m->m03,   s10=m->m10,s12=m->m12,s13=m->m13,   s20=m->m20,s21=m->m20,s23=m->m23,   s30=m->m30,s31=m->m31,s32=m->m32; m->m01=s10;m->m02=s20;m->m03=s30;   m->m10=s01;m->m12=s21;m->m13=s31; m->m20=s02;m->m21=s12;m->m23=s32; m->m30=s03;m->m31=s13;m->m32=s23;}
 NM_API_IMPL const mat4* mat4_inverted(mat4* dst,const mat4* src)    {nm_Mat4Invert(dst->m,src->m);return dst;}
 NM_API_IMPL int mat4_invert(mat4* m)   {return nm_Mat4Invert(m->m,m->m);}
-NM_API_IMPL const mat4* mat4_invertedFast(mat4* dst,const mat4* src)    {nm_Mat4InvertTransformMatrixWithoutScaling(dst->m,src->m);return dst;}
-NM_API_IMPL void mat4_invertFast(mat4* m)   {const mat4 tmp=*m;nm_Mat4InvertTransformMatrixWithoutScaling(m->m,tmp.m);}
+NM_API_IMPL const mat4* mat4_invertedTransformMatrixWithoutScaling(mat4* dst,const mat4* src)    {nm_Mat4InvertTransformMatrixWithoutScaling(dst->m,src->m);return dst;}
+NM_API_IMPL void mat4_invertTransformMatrixWithoutScaling(mat4* m)   {const mat4 tmp=*m;nm_Mat4InvertTransformMatrixWithoutScaling(m->m,tmp.m);}
+NM_API_IMPL const mat4* mat4_invertedTransformMatrix(mat4* dst,const mat4* src)    {nm_Mat4InvertTransformMatrix(dst->m,src->m);return dst;}
+NM_API_IMPL void mat4_invertTransformMatrix(mat4* m)   {const mat4 tmp=*m;nm_Mat4InvertTransformMatrix(m->m,tmp.m);}
 NM_API_IMPL void mat4_invertXZAxis(mat4* m) {nm_Mat4InvertXZAxisInPlace(m->m);}
 NM_API_IMPL const mat4* mat4_invertedXZAxis(mat4* dst,const mat4* src)  {nm_Mat4InvertXZAxis(dst->m,src->m);return dst;}
 
