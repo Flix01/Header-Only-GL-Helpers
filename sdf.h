@@ -4499,9 +4499,7 @@ bool SdfCharset::GetEmbeddedFontData(SdfVector<char>& fntFileOut,SdfVector<unsig
 
         wOut=hOut=512;
         const unsigned num_indices = sizeof(indices)/sizeof(indices[0])-1;  // or strlen(indices);
-        //SDF_ASSERT(wOut*hOut==num_indices);
-        unsigned hasReps=0,*pRaw;const char* pc;char lastChar=(char)255,c,j;
-    #   ifdef USE_BIG_ENDIAN_MACHINE /* define this on big endian machines */
+    #   ifdef SDF_BIG_ENDIAN /* define this on big endian machines */
         unsigned tmp;const unsigned char* pTmp = (const unsigned char*) &tmp;
         unsigned char* ppal = (unsigned char*) palette;
         for (i=0;i<numPalette;i++) {
@@ -4509,17 +4507,49 @@ bool SdfCharset::GetEmbeddedFontData(SdfVector<char>& fntFileOut,SdfVector<unsig
             *ppal++ = pTmp[3];  *ppal++ = pTmp[2];  *ppal++ = pTmp[1];  *ppal++ = pTmp[0];
         }
     #   endif
-        rawRGBAOut.resize(4*wOut*hOut);pRaw = (unsigned*) &rawRGBAOut[0];
-        for (pc=indices;*pc!='\0';++pc)  {
-            c = *pc;if (hasReps==0 && c=='~') {hasReps=1;continue;}
-            c = c>='\\' ? (c-'1') : (c-'0');
-            if (hasReps) {
-                hasReps = palette[(unsigned char)lastChar];
-                for (j=0;j<c;j++) *pRaw++ = hasReps;
-                hasReps=0;continue;
+        rawRGBAOut.resize(4*wOut*hOut);
+#       define SDF_USE_SAFER_CODE_FOR_FONT_IMAGE_DECOMPRESSION
+#       ifndef SDF_USE_SAFER_CODE_FOR_FONT_IMAGE_DECOMPRESSION
+        {
+            // Not sure if there might be alignment issues with this code on some machines
+            // (rawRGBAOut is SdfVector<unsigned char>, and we cast it to unsigned int*):
+            unsigned hasReps=0,*pRaw;const char* pc;char lastChar=(char)255,c,j;
+            pRaw = (unsigned int*) &rawRGBAOut[0];
+            for (pc=indices;*pc!='\0';++pc)  {
+                c = *pc;if (hasReps==0 && c=='~') {hasReps=1;continue;}
+                c = c>='\\' ? (c-'1') : (c-'0');
+                if (hasReps) {
+                    hasReps = palette[(unsigned char)lastChar];
+                    for (j=0;j<c;j++) *pRaw++ = hasReps;
+                    hasReps=0;continue;
+                }
+                *pRaw++ = palette[(unsigned char)c];lastChar = c;
             }
-            *pRaw++ = palette[(unsigned char)c];lastChar = c;
+            // Note that if is safe to do the opposite:
+            // declare rawRGBAOut SdfVector<unsigned int> (its size must be 1/4) and then cast it as unsigned char pointer.
         }
+#       else // SDF_USE_SAFER_CODE_FOR_FONT_IMAGE_DECOMPRESSION
+        {
+            unsigned hasReps=0;unsigned char* pRaw;
+            const char *pc;unsigned char* ppal;char lastChar=(char)255,c,j,k;
+            pRaw = (unsigned char*) &rawRGBAOut[0];
+            for (pc=indices;*pc!='\0';++pc)  {
+                c = *pc;if (hasReps==0 && c=='~') {hasReps=1;continue;}
+                c = c>='\\' ? (c-'1') : (c-'0');
+                if (hasReps) {
+                    hasReps = palette[(unsigned char)lastChar];
+                    for (j=0;j<c;j++) {
+                        ppal = (unsigned char*) &hasReps;
+                        for (k=0;k<4;k++) *pRaw++ = *ppal++;
+                    }
+                    hasReps=0;continue;
+                }
+                ppal = (unsigned char*) &palette[(unsigned char)c];
+                for (k=0;k<4;k++) *pRaw++ = *ppal++;
+                lastChar = c;
+            }
+        }
+#       endif // SDF_USE_SAFER_CODE_FOR_FONT_IMAGE_DECOMPRESSION
     }
 
     return true;
