@@ -315,6 +315,7 @@ void ResizeGL(int w,int h) {
 static Sdf::SdfCharset* gDefaultCharset = NULL;
 static Sdf::SdfTextChunk* gTextChunks[5] = {NULL,NULL,NULL,NULL};
 static const unsigned int gNumTextChunks = sizeof(gTextChunks)/sizeof(gTextChunks[0]);
+static unsigned begin = 0;
 
 void InitGL(void) {    
     // IMPORTANT CALL--------------------------------------------------------
@@ -372,7 +373,7 @@ void InitGL(void) {
     // This is just to show that the ebedded 512x512 pixels font should include the whole ASCII EXTENDED European glyphs set.
 
     // We will use gTextChunks[4] to display a dynamic counter in DrawGL()
-
+    begin=0;
     }
 
 void DestroyGL() {
@@ -390,7 +391,6 @@ void DrawGL(void)
     // We need to calculate the "instantFrameTime" for smooth camera movement and
     // we also need stuff to calculate FPS.
     const unsigned timeNow = glutGet(GLUT_ELAPSED_TIME);
-    static unsigned begin = 0;
     static unsigned cur_time = 0;
     unsigned elapsed_time,delta_time;
     static unsigned long frames = 0;

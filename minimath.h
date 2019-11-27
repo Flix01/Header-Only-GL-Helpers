@@ -120,7 +120,7 @@ TODO:
 #define MINIMATH_H_
 
 #define NM_VERSION               "1.0 WIP"
-#define NM_VERSION_NUM           0003
+#define NM_VERSION_NUM           0004
 
 #ifdef NM_HAS_CFG
 #   include "minimath_cfg.h"
@@ -303,24 +303,41 @@ typedef float nmoat;
 extern "C"	{
 #endif //__cplusplus
 
-NM_API_DEF_EXT_INL nmoat nmh_radians(nmoat deg);
-NM_API_DEF_EXT_INL nmoat nmh_degrees(nmoat rad);
-NM_API_DEF_EXT_INL nmoat nmh_sin(nmoat v);
-NM_API_DEF_EXT_INL nmoat nmh_cos(nmoat v);
+#define nmh_radians(deg) M_DEG2RAD(deg)
+#define nmh_degrees(rad) M_RAD2DEG(rad)
+#ifndef NM_DOUBLE_PRECISION
+#define nmh_sin(v)      sinf(v)
+#define nmh_cos(v)      cosf(v)
+#define nmh_tan(v)      tanf(v)
+#define nmh_asin(v)     asinf(v)
+#define nmh_acos(v)     acosf(v)
+#define nmh_atan(v)     atanf(v)
+#define nmh_atan2(y,x)  atan2f(y,x)
+#define nmh_sqrt(v)     sqrtf(v)
+#define nmh_fabs(v)     fabsf(v)
+#define nmh_fmod(a,b)   fmodf(a,b)
+#define nmh_pow(x,y)    powf(x,y)
+#define nmh_round(v)    ((v) < 0.0f ? ceilf((v) - 0.5f) : floorf((v) + 0.5f))
+#define nmh_ceil(v)     ceilf(v)
+#define nmh_floor(v)    floorf(v)
+#else //NM_DOUBLE_PRECISION
+#define nmh_sin(v)      sin(v)
+#define nmh_cos(v)      cos(v)
+#define nmh_tan(v)      tan(v)
+#define nmh_asin(v)     asin(v)
+#define nmh_acos(v)     acos(v)
+#define nmh_atan(v)     atan(v)
+#define nmh_atan2(y,x)  atan2(y,x)
+#define nmh_sqrt(v)     sqrt(v)
+#define nmh_fabs(v)     fabs(v)
+#define nmh_fmod(a,b)   fmod(a,b)
+#define nmh_pow(x,y)    pow(x,y)
+#define nmh_round(v)    ((v) < 0.0 ? ceil((v) - 0.5) : floor((v) + 0.5))
+#define nmh_ceil(v)     ceil(v)
+#define nmh_floor(v)    floor(v)
+#endif // NM_DOUBLE_PRECISION
+#define nmh_fractional_part(v) nmh_fmod(v,(nmoat)1.0)
 NM_API_DEF_EXT_INL void nmh_sincos(nmoat v,nmoat* NM_RESTRICT s,nmoat* NM_RESTRICT c);
-NM_API_DEF_EXT_INL nmoat nmh_tan(nmoat v);
-NM_API_DEF_EXT_INL nmoat nmh_asin(nmoat v);
-NM_API_DEF_EXT_INL nmoat nmh_acos(nmoat v);
-NM_API_DEF_EXT_INL nmoat nmh_atan(nmoat v);
-NM_API_DEF_EXT_INL nmoat nmh_atan2(nmoat y,nmoat x);
-NM_API_DEF_EXT_INL nmoat nmh_sqrt(nmoat v);
-NM_API_DEF_EXT_INL nmoat nmh_fabs(nmoat v);
-NM_API_DEF_EXT_INL nmoat nmh_fmod(nmoat a,nmoat b);
-NM_API_DEF_EXT_INL nmoat nmh_pow(nmoat x,nmoat y);
-NM_API_DEF_EXT_INL nmoat nmh_round(nmoat v);
-NM_API_DEF_EXT_INL nmoat nmh_ceil(nmoat v);
-NM_API_DEF_EXT_INL nmoat nmh_floor(nmoat v);
-NM_API_DEF_EXT_INL nmoat nmh_fractional_part(nmoat v);
 
 
 NM_API_DEF_EXT_INL int nm_AreEqualEps(const nmoat* NM_RESTRICT a,const nmoat* NM_RESTRICT b,int num_nmoats,nmoat eps);
@@ -464,6 +481,9 @@ NM_API_DEF_EXT_INL nmoat* nm_Mat4Copy(nmoat* NM_RESTRICT dst16,const nmoat* NM_R
 NM_API_DEF_EXT_INL nmoat* nm_Mat4Identity(nmoat* NM_RESTRICT result16);
 NM_API_DEF_EXT_INL nmoat* nm_Mat4Mul(nmoat* NM_RESTRICT result16,const nmoat* NM_RESTRICT ml16,const nmoat* NM_RESTRICT mr16);
 NM_API_DEF_EXT_INL nmoat* nm_Mat4Mul_NoCheck(nmoat* NM_RESTRICT result16,const nmoat* NM_RESTRICT ml16,const nmoat* NM_RESTRICT mr16);
+/*NM_API_DEF_EXT_INL nmoat* nm_Mat4RotateByMat4_NoCheck(nmoat* NM_RESTRICT result16,const nmoat* NM_RESTRICT ml16,const nmoat* NM_RESTRICT mr16);
+NM_API_DEF_EXT_INL nmoat* nm_Mat4RotateByMat4(nmoat* NM_RESTRICT result16,const nmoat* NM_RESTRICT ml16,const nmoat* NM_RESTRICT mr16);*/
+
 
 NM_API_DEF_EXT_INL void nm_Mat4LookAt(nmoat* NM_RESTRICT mOut16,nmoat eyeX,nmoat eyeY,nmoat eyeZ,nmoat centerX,nmoat centerY,nmoat centerZ,nmoat upX,nmoat upY,nmoat upZ);
 NM_API_DEF_EXT_INL void nm_Mat4Perspective(nmoat* NM_RESTRICT mOut16,nmoat degfovy,nmoat aspect, nmoat zNear, nmoat zFar);
@@ -1932,12 +1952,8 @@ extern "C"	{
 #endif //__cplusplus
 
 
-NM_API_IMPL nmoat nmh_radians(nmoat deg) {return M_DEG2RAD(deg);}
-NM_API_IMPL nmoat nmh_degrees(nmoat rad) {return M_RAD2DEG(rad);}
 
 #ifndef NM_DOUBLE_PRECISION
-NM_API_IMPL nmoat nmh_sin(nmoat v)  {return sinf(v);}
-NM_API_IMPL nmoat nmh_cos(nmoat v)  {return cosf(v);}
 NM_API_IMPL void nmh_sincos(nmoat v,nmoat* NM_RESTRICT s,nmoat* NM_RESTRICT c)  {
 #   if (defined(GNU_SOURCE) || defined(NM_HAS_SINCOS))
     return sincosf(v,s,c);
@@ -1945,21 +1961,7 @@ NM_API_IMPL void nmh_sincos(nmoat v,nmoat* NM_RESTRICT s,nmoat* NM_RESTRICT c)  
     *s=sinf(v);*c=cosf(v);
 #   endif
 }
-NM_API_IMPL nmoat nmh_tan(nmoat v) {return tanf(v);}
-NM_API_IMPL nmoat nmh_asin(nmoat v)   {return asinf(v);}
-NM_API_IMPL nmoat nmh_acos(nmoat v)   {return acosf(v);}
-NM_API_IMPL nmoat nmh_atan(nmoat v)   {return atanf(v);}
-NM_API_IMPL nmoat nmh_atan2(nmoat y,nmoat x)  {return atan2f(y,x);}
-NM_API_IMPL nmoat nmh_sqrt(nmoat v) {return sqrtf(v);}
-NM_API_IMPL nmoat nmh_fabs(nmoat v) {return fabsf(v);}
-NM_API_IMPL nmoat nmh_fmod(nmoat a,nmoat b) {return fmodf(a,b);}
-NM_API_IMPL nmoat nmh_pow(nmoat x,nmoat y) {return powf(x,y);}
-NM_API_IMPL nmoat nmh_round(nmoat v)    {return v < 0.0f ? ceilf(v - 0.5f) : floorf(v + 0.5f);}
-NM_API_IMPL nmoat nmh_ceil(nmoat v) {return ceilf(v);}
-NM_API_IMPL nmoat nmh_floor(nmoat v) {return floorf(v);}
 #else //NM_DOUBLE_PRECISION
-NM_API_IMPL nmoat nmh_sin(nmoat v)  {return sin(v);}
-NM_API_IMPL nmoat nmh_cos(nmoat v)  {return cos(v);}
 NM_API_IMPL void nmh_sincos(nmoat v,nmoat* NM_RESTRICT s,nmoat* NM_RESTRICT c)  {
 #   if (defined(GNU_SOURCE) || defined(NM_HAS_SINCOS))
     return sincos(v,s,c);
@@ -1967,20 +1969,8 @@ NM_API_IMPL void nmh_sincos(nmoat v,nmoat* NM_RESTRICT s,nmoat* NM_RESTRICT c)  
     *s=sin(v);*c=cos(v);
 #   endif
 }
-NM_API_IMPL nmoat nmh_tan(nmoat v) {return tan(v);}
-NM_API_IMPL nmoat nmh_asin(nmoat v)   {return asin(v);}
-NM_API_IMPL nmoat nmh_acos(nmoat v)   {return acos(v);}
-NM_API_IMPL nmoat nmh_atan(nmoat v)   {return atan(v);}
-NM_API_IMPL nmoat nmh_atan2(nmoat y,nmoat x)  {return atan2(y,x);}
-NM_API_IMPL nmoat nmh_sqrt(nmoat v) {return sqrt(v);}
-NM_API_IMPL nmoat nmh_fabs(nmoat v) {return fabs(v);}
-NM_API_IMPL nmoat nmh_fmod(nmoat a,nmoat b) {return fmod(a,b);}
-NM_API_IMPL nmoat nmh_pow(nmoat x,nmoat y) {return pow(x,y);}
-NM_API_IMPL nmoat nmh_round(nmoat v)    {return v < 0.0 ? ceil(v - 0.5) : floor(v + 0.5);}
-NM_API_IMPL nmoat nmh_ceil(nmoat v) {return ceil(v);}
-NM_API_IMPL nmoat nmh_floor(nmoat v) {return floor(v);}
 #endif // NM_DOUBLE_PRECISION
-NM_API_IMPL nmoat nmh_fractional_part(nmoat v) {return nmh_fmod(v,(nmoat)1.0);}
+
 
 // private functions here ---------------------------------------------------
 #ifdef NEVER
@@ -2849,6 +2839,29 @@ NM_API_IMPL nmoat* nm_Mat4Mul(nmoat* NM_RESTRICT result16,const nmoat* NM_RESTRI
     }
     return nm_Mat4Mul_NoCheck(result16,ml16,mr16);
 }
+/*NM_API_IMPL nmoat* nm_Mat4RotateByMat4_NoCheck(nmoat* NM_RESTRICT result16,const nmoat* NM_RESTRICT ml16,const nmoat* NM_RESTRICT mr16)   {
+    // NEVER TESTED! we must use only sub 3x3 mr16 matrix
+    int i,j,j4;
+    for(i = 0; i < 3; i++) {
+        for(j = 0; j < 3; j++) {
+              j4 = 4*j; result16[i+j4] = ml16[i]*mr16[j4] + ml16[i+4]*mr16[1+j4] + ml16[i+8]*mr16[2+j4];
+        }
+    }
+    result16[3]=ml16[3];result16[7]=ml16[7];result16[11]=ml16[11];
+    for (i=12;i<16;i++) result16[i]=ml16[i];
+    return result16;
+}
+NM_API_IMPL nmoat* nm_Mat4RotateByMat4(nmoat* NM_RESTRICT result16,const nmoat* NM_RESTRICT ml16,const nmoat* NM_RESTRICT mr16) {
+    if (result16==ml16) {
+        nmoat ML16[16];nm_Mat4Copy(ML16,ml16);
+        return nm_Mat4RotateByMat4_NoCheck(result16,ML16,mr16);
+    }
+    else if (result16==mr16) {
+        nmoat MR16[16];nm_Mat4Copy(MR16,mr16);
+        return nm_Mat4RotateByMat4_NoCheck(result16,ml16,MR16);
+    }
+    return nm_Mat4RotateByMat4_NoCheck(result16,ml16,mr16);
+}*/
 NM_API_IMPL void nm_Mat4LookAt(nmoat* NM_RESTRICT mOut16,nmoat eyeX,nmoat eyeY,nmoat eyeZ,nmoat centerX,nmoat centerY,nmoat centerZ,nmoat upX,nmoat upY,nmoat upZ)    {
     nmoat* m = mOut16;
     const nmoat eps = (nmoat)0.0001;
@@ -3073,31 +3086,68 @@ NM_API_IMPL int nm_Mat4UnProject4(nmoat winX, nmoat winY, nmoat winZ, nmoat clip
 }
 
 NM_API_IMPL nmoat* nm_Mat4Translate(nmoat* NM_RESTRICT mInOut16,nmoat x,nmoat y,nmoat z)  {
+#ifdef NM_USE_LEGACY_CODE
     const nmoat m[16] = {
         1, 0, 0, 0,
         0, 1, 0, 0,
         0, 0, 1, 0,
         x, y, z, 1};
     return nm_Mat4Mul(mInOut16,mInOut16,m);
+#else
+    int i;for (i=0;i<3;i++) mInOut16[12+i]+=mInOut16[i]*x+mInOut16[4+i]*y+mInOut16[8+i]*z;
+    return mInOut16;
+#endif
 }
 NM_API_IMPL nmoat* nm_Mat4Rotate(nmoat* NM_RESTRICT mInOut16,nmoat degAngle,nmoat x,nmoat y,nmoat z)  {
     const nmoat angle = degAngle*(nmoat)M_PIOVER180;
-    const nmoat c = nmh_cos(angle);
-    const nmoat s = nmh_sin(angle);
-    nmoat len = x*x+y*y+z*z;
+    nmoat len = x*x+y*y+z*z,s,c;
+    nmh_sincos(angle,&s,&c);
     if (len<(nmoat)0.999 || len>(nmoat)1.001) {len=nmh_sqrt(len);x/=len;y/=len;z/=len;}
+#ifdef NM_USE_LEGACY_CODE
     {
+        /*const nmoat m[16] = {
+            c + x*x*(1-c),      y*x*(1-c)+z*s,      z*x*(1-c)-y*s,      0,
+            x*y*(1-c) - z*s,    c + y*y*(1-c),      z*y*(1-c) + x*s,    0,
+            x*z*(1-c) + y*s,    y*z*(1-c) - x*s,    c + z*z*(1-c),      0,
+            0,                  0,                  0,                  1};*/
+        const nmoat zero = 0,one = 1,omc = 1-c, xs = x*s,ys = y*s,zs = z*s;
+        const nmoat xy = x*y,xz = x*z,yz = y*z, xx = x*x,yy = y*y,zz = z*z;
         const nmoat m[16] = {
-            c + x*x*(1-c),  y*x*(1-c)+z*s,    z*x*(1-c)-y*s,    0,
-            x*y*(1-c) - z*s,  c + y*y*(1-c),      z*y*(1-c) + x*s,    0,
-            x*z*(1-c) + y*s,  y*z*(1-c) - x*s,    c + z*z*(1-c),      0,
-            0,              0,                  0,                  1};
+            c+xx*omc,   xy*omc+zs,  xz*omc-ys,  zero,
+            xy*omc-zs,  c+yy*omc,   yz*omc+xs,  zero,
+            xz*omc+ys,  yz*omc-xs,  c+zz*omc,   zero,
+            zero,       zero,       zero,       one};
+
         return nm_Mat4Mul(mInOut16,mInOut16,m);
     }
+#else
+    {
+        const nmoat omc = (nmoat)1-c, xs = x*s,ys = y*s,zs = z*s;int i;
+        const nmoat xy = x*y,xz = x*z,yz = y*z, xx = x*x,yy = y*y,zz = z*z;
+        const nmoat rot[9] = {  /* 3x3 rotation matrix */
+            c+xx*omc,   xy*omc+zs,  xz*omc-ys,
+            xy*omc-zs,  c+yy*omc,   yz*omc+xs,
+            xz*omc+ys,  yz*omc-xs,  c+zz*omc
+        };
+        const nmoat* m = mInOut16;
+        for (i=0;i<3;i++)   {   /* manual 3x3 rotation */
+            const nmoat mi=m[i],mi4=m[i+4],mi8=m[i+8];  /* we cannot use references here */
+            mInOut16[i]     = mi*rot[0] + mi4*rot[1] + mi8*rot[2];
+            mInOut16[4+i]   = mi*rot[3] + mi4*rot[4] + mi8*rot[5];
+            mInOut16[8+i]   = mi*rot[6] + mi4*rot[7] + mi8*rot[8];
+        }
+        return mInOut16;
+    }
+#endif
 }
 NM_API_IMPL nmoat* nm_Mat4Scale(nmoat* NM_RESTRICT mInOut16,nmoat x,nmoat y,nmoat z)  {
+#ifdef NM_USE_LEGACY_CODE
     const nmoat m[16] = {x, 0, 0, 0, 0, y, 0, 0, 0, 0, z, 0, 0, 0, 0, 1};
     return nm_Mat4Mul(mInOut16,mInOut16,m);
+#else
+    int i;for (i=0;i<3;i++) {mInOut16[i]*=x;mInOut16[4+i]*=y;mInOut16[8+i]*=z;}
+    return mInOut16;
+#endif
 }
 NM_API_IMPL void nm_Mat4TransposeInPlace(nmoat* NM_RESTRICT m16)   {
     nmoat* m=m16;
@@ -3770,14 +3820,16 @@ NM_API_IMPL void nm_Mat4MulDir(const nmoat* NM_RESTRICT m16,nmoat* NM_RESTRICT d
     dirOut3[2] = dirX*m16[2] + dirY*m16[6] + dirZ*m16[10];
     //w          = dirX*m16[3] + dirY*m16[7] + dirZ*m16[11]; // + m[15] ?
     //if (w!=0 && w!=1) {dirOut3[0]/=w;dirOut3[1]/=w;dirOut3[2]/=w;}
+    /* not sure if we should activate 'w' division here or not... */
 }
 NM_API_IMPL void nm_Mat4MulPos(const nmoat* NM_RESTRICT m16,nmoat* NM_RESTRICT posOut3,const nmoat posX,nmoat posY,nmoat posZ) {
-    nmoat w;
+    //nmoat w;
     posOut3[0] = posX*m16[0] + posY*m16[4] + posZ*m16[8] + m16[12];
     posOut3[1] = posX*m16[1] + posY*m16[5] + posZ*m16[9] + m16[13];
     posOut3[2] = posX*m16[2] + posY*m16[6] + posZ*m16[10]+ m16[14];
-    w          = posX*m16[3] + posY*m16[7] + posZ*m16[11]+ m16[15];
-    if (w!=(nmoat)0 && w!=(nmoat)1) {posOut3[0]/=w;posOut3[1]/=w;posOut3[2]/=w;}
+    //w          = posX*m16[3] + posY*m16[7] + posZ*m16[11]+ m16[15];
+    //if (w!=(nmoat)0 && w!=(nmoat)1) {posOut3[0]/=w;posOut3[1]/=w;posOut3[2]/=w;}
+    /* not sure if we should activate 'w' division here or not... */
 }
 
 
@@ -3931,8 +3983,15 @@ NM_API_IMPL void nm_GetFrustumPlaneEquations(nmoat planeEquationsOut[6][4],const
 NM_API_IMPL void nm_GetFrustumPoints(nmoat frustumPoints[8][4],const nmoat* NM_RESTRICT vpMatrixInverse16)    {
     const nmoat v[8][4] = {{-1, -1, -1, 1},{-1,  1, -1, 1},{ 1,  1, -1, 1},{ 1, -1, -1, 1},{-1, -1, 1, 1},{-1,  1, 1, 1},{ 1,  1, 1, 1},{ 1, -1, 1, 1}};
     int i;for (i = 0; i < 8; i++) {
-        nm_Mat4MulPos(vpMatrixInverse16,frustumPoints[i],v[i][0],v[i][1],v[i][2]);
-        frustumPoints[i][3]=1;
+        // old code: this works only if 'nm_Mat4MulPos(...)' handles the w-component division
+        //nm_Mat4MulPos(vpMatrixInverse16,frustumPoints[i],v[i][0],v[i][1],v[i][2]);
+        //frustumPoints[i][3]=1; // 'nm_Mat4MulPos(...)' only outputs 3 components
+        // new code: it handles w-component division manually
+        nmoat w,* fPoint = frustumPoints[i],posX=v[i][0],posY=v[i][1],posZ=v[i][2];
+        nm_Mat4MulPos(vpMatrixInverse16,fPoint,posX,posY,posZ);
+        w          = posX*vpMatrixInverse16[3] + posY*vpMatrixInverse16[7] + posZ*vpMatrixInverse16[11]+ vpMatrixInverse16[15];
+        if (w!=(nmoat)0 && w!=(nmoat)1) {fPoint[0]/=w;fPoint[1]/=w;fPoint[2]/=w;}
+        fPoint[3]=(nmoat)1; // 'nm_Mat4MulPos(...)' only outputs 3 components
     }
 }
 NM_API_IMPL void nm_GetFrustumAabbCenterAndHalfExtents(nmoat* NM_RESTRICT frustumCenterOut3,nmoat* NM_RESTRICT frustumHalfExtentsOut3,const nmoat frustumPoints[8][4])    {
@@ -4011,7 +4070,7 @@ NM_API_IMPL void nm_GetLightViewProjectionMatrixExtra(nmoat* NM_RESTRICT lvpMatr
     const nmoat cameraLeftDirection3[3] = {-cameraVMatrixInverse16[0],-cameraVMatrixInverse16[1],-cameraVMatrixInverse16[2]};
     nmoat dotCameraXDirectionLightDirection = 0, lightUpVector3[3]={0,1,0};
     int i;
-    if (lvpMatrixOut16==0) lvpMatrixOut16=lvpMatrixFallback;    // AFAIK from the caller point of view it's still lvpMatrixOut16==0, isn't it?
+    if (lvpMatrixOut16==0) lvpMatrixOut16=lvpMatrixFallback;
 
     // Shadow swimming happens when: 1) camera translates; 2) camera rotates; 3) objects move or rotate
     // AFAIK Shadow swimming (3) can't be fixed in any way
@@ -4117,6 +4176,7 @@ NM_API_IMPL void nm_GetLightViewProjectionMatrixExtra(nmoat* NM_RESTRICT lvpMatr
 
             for (i=0;i<4;i++)   {
                optionalLightViewportClippingOut4[i]/=texelIncrement;    // viewport is in [0,texture_size]
+               // mmmh, this is probably wrong when textureWidth!=textureHeight... TO CHECK!
             }
 
             /*optionalLightViewportClippingOut4[0] = floor(optionalLightViewportClippingOut4[0]);

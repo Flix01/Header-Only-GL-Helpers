@@ -89,6 +89,9 @@ for glut.h, glew.h, etc. with something like:
 // "dynamic_resolution.h" implements the first shadow mapping step and optionally dynamic resolution (that by default should keep frame rate > config.dynamic_resolution_target_fps)
 //#define DYNAMIC_RESOLUTION_USE_GLSL_VERSION_330       // (Optional) Not sure it's faster...
 //#define DYNAMIC_RESOLUTION_SHADOW_MAP_SIZE_FORCE_POT    // There are other definitions that affect the shadow map resolution. Please see dynamic_resolution.h.
+//#define DYNAMIC_RESOLUTION_SHADOW_MAP_RECTANGULAR       // more flickering but slightly better resolution
+//#define DYNAMIC_RESOLUTION_SHADOW_MAP_SIZE_MULTIPLIER   2.0 // 1.5 default value [better resolution, but more expensive]
+//#define DYNAMIC_RESOLUTION_SHADOW_MAP_DISABLED        // test-only
 #if (!defined(__EMSCRIPTEN__) && !defined(DYNAMIC_RESOLUTION_SHADOW_USE_PCF))
 //#   define DYNAMIC_RESOLUTION_SHADOW_USE_PCF 4    // Optional [but expensive] Percentage Closing Filter Shadows (for this to work emscripten needs in the command-line: -s USE_WEBGL2=1 )
 #endif //__EMSCRIPTEN__
@@ -103,6 +106,8 @@ for glut.h, glew.h, etc. with something like:
 #define TEAPOT_SHADER_FOG_HINT_FRAGMENT_SHADER	// (Optional) better fog quality
 #define TEAPOT_SHADER_USE_SHADOW_MAP            // Mandatory for implementing the second shadow mapping step, but can be disabled in this demo
 #define TEAPOT_ENABLE_FRUSTUM_CULLING           // (Optional) a bit expensive, and does not cull 100% hidden objects. You'd better test if it works and if it's faster...
+//#define TEAPOT_SHADER_USE_ACCURATE_NORMALS      // (Optional) a bit slower [it replaces TEAPOT_SHADER_USE_NORMAL_MATRIX from version 1.2]. Only relevant when using non-uniform scaling and/or scaling embedded in matrices.
+//#define TEAPOT_SHADER_HINT_ACCURATE_NORMALS_GPU // (Optional) used only if TEAPOT_SHADER_USE_ACCURATE_NORMALS is defined. Don't know if it's faster or not (1 less glUniform3f(...) call on the CPU, but more calculations in the vertex shader)
 #define TEAPOT_IMPLEMENTATION                   // Mandatory in 1 source file (.c or .cpp)
 #include "teapot.h"
 
@@ -219,7 +224,7 @@ float lightDirection[4] = {0,1,0,0};                    // Derived value (do not
 float pMatrix[16];                  // projection matrix
 const float pMatrixFovyDeg = 45.f;
 const float pMatrixNearPlane = 0.5f;
-const float pMatrixFarPlane = 20.0f;
+const float pMatrixFarPlane = 12.5f;
 float pMatrixInv[16];               // inverse projection matrix (test)
 
 float instantFrameTime = 16.2f;
@@ -302,7 +307,7 @@ void InitGL(void) {
 
 #   ifdef TEAPOT_SHADER_FOG
     // We use fog to prevent ad clipping artifacts, so it just needs the near and far plane
-    Teapot_SetFogDistances((pMatrixFarPlane-pMatrixNearPlane)*0.5f,pMatrixFarPlane); // We start the fog at the half point... but it works better nearer when farPlane is far away
+    Teapot_SetFogDistances((pMatrixFarPlane-pMatrixNearPlane)*0.75f,pMatrixFarPlane); // We start the fog at 3/4
     Teapot_SetFogColor(0.3f, 0.6f, 1.0f); // it should be the same as glClearColor()
 #   endif
 
@@ -511,7 +516,6 @@ void DrawGL(void)
     // Draw to Shadow Map------------------------------------------------------------------------------------------
     {
     static float lvpMatrix[16]; // = light_pMatrix*light_vMatrix
-    const float texelIncrement = Dynamic_Resolution_GetShadowMapTexelIncrement();   // intended to alleviate shadow swimming (but it does not seem to work...)
 
 //#   define TEST_AUTOMATIC_LVPMATRIX_CALCULATION
 #   ifndef TEST_AUTOMATIC_LVPMATRIX_CALCULATION
@@ -519,6 +523,8 @@ void DrawGL(void)
     // Also: there's no fixed rule I know to calculate these matrices. Feel free to change them!
     static float lpMatrix[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
     static float lvMatrix[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+    const float texelIncrement = Dynamic_Resolution_GetShadowMapTexelIncrement();   // intended to alleviate shadow swimming (but it does not seem to work...)
+
     //if (lpMatrix[0]==0)
     {
         // This changes with pMatrixFarPlane and pMatrixFovDeg
@@ -542,7 +548,11 @@ void DrawGL(void)
 #   else //TEST_AUTOMATIC_LVPMATRIX_CALCULATION
     {
         // This eats too much shadow map resolution... see also: https://github.com/Flix01/Tiny-OpenGL-Shadow-Mapping-Examples
-        Teapot_Helper_GetLightViewProjectionMatrix(lvpMatrix,Teapot_GetViewMatrixInverseConstReference(),pMatrixNearPlane,pMatrixFarPlane,pMatrixFovyDeg,current_aspect_ratio,Teapot_GetNormalizedLightDirectionConstReference(),texelIncrement);
+        float frustumRadius,frustumCenterDistance,frustumCenter3[3];
+        const float cameraTargetDistanceForUnstableOrtho3DModeOnly_or_zero = 0.f;
+        frustumRadius = Teapot_Helper_GetFrustumRadiusAndCenterDistance(&frustumCenterDistance,pMatrixNearPlane,pMatrixFarPlane,pMatrixFovyDeg,current_aspect_ratio,cameraTargetDistanceForUnstableOrtho3DModeOnly_or_zero);
+        Teapot_Helper_GetFrustumCenterFromCenterDistance(frustumCenter3,Teapot_GetViewMatrixInverseConstReference(),frustumCenterDistance);
+        Teapot_Helper_GetLightViewProjectionMatrix(lvpMatrix,Teapot_GetViewMatrixInverseConstReference(),frustumCenter3,frustumRadius,Teapot_GetNormalizedLightDirectionConstReference(),Dynamic_Resolution_GetShadowMapTextureWidth(),Dynamic_Resolution_GetShadowMapTextureHeight());
     }
 #   endif //TEST_AUTOMATIC_LVPMATRIX_CALCULATION
 

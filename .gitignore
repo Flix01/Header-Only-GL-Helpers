@@ -62,6 +62,8 @@ Tests/html/
 docs/
 reps/
 Tests/reps/
+Tests/include
+Tests/include/
 *.pro
 *.user
 *.cfg
@@ -81,6 +83,13 @@ obj.h
 Sdf/
 miniobjloader.h
 minizip/
+sdf_c.h
+Tests/test_sdf.c
+Tests/test_sdf_c
+c_vector*
+
+
+
 
 
 
