@@ -235,8 +235,10 @@ void Teapot_PreDraw(void);  // sets program and buffers for drawing
 
 void Teapot_SetColor(float R, float G, float B, float A);     // Optional (last set is used). A<1.0 requires glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); and glEnable(GL_BLEND); to make transparency work
 void Teapot_SetColorAmbient(float R, float G, float B);       // Optional (last set is used).
+void Teapot_SetColorAmbientAndDiffuse(const float ambient[3],const float diffuse[4]);// Optional (last set is used).
 #ifdef TEAPOT_SHADER_SPECULAR
 void Teapot_SetColorSpecular(float R, float G, float B, float SHI); // Optional (last set is used). If SHI<0, last valid call value is used
+void Teapot_SetColorAmbientDiffuseAndSpecular(const float ambient[3],const float diffuse[4],const float specular_plus_shininess[4]);// Optional (last set is used). If specular_plus_shininess[3]<0, last valid call value is used.
 #endif //TEAPOT_SHADER_SPECULAR
 
 void Teapot_SetScaling(float scalingX,float scalingY,float scalingZ);   // Optional (last set is used): it scales all the vertices, leaving the normals unaffected (a good perfomance/quality compromise)
@@ -490,6 +492,11 @@ static __inline void Teapot_Helper_ConvertMatrixd2f9(float* __restrict result9,c
 static __inline void Teapot_Helper_ConvertMatrixf2d9(double* __restrict result9,const float* __restrict m9) {int i;for(i = 0; i < 9; i++) result9[i]=(double)m9[i];}
 
 
+// These draw an armature bone with the 'tail' placed in the matrix origin and 'length' directed in the 'y' relative axis (not affected by the TEAPOT_CENTER_MESHES_ON_FLOOR definition):
+void Teapot_Helper_DrawArmatureBone(const tpoat mMatrix[16],tpoat length);        // (optionally repeat this call for multiple draws)
+void Teapot_Helper_DrawArmatureBone_Mv(const tpoat mvMatrix[16],tpoat length);    // (optionally repeat this call for multiple draws) Note that this is not the model matrix, but: Teapot_Helper_MultMatrix(mvMatrix,vMatrix,mMatrix)
+
+
 // Low-level API (use it at your own risk, or never use it at all!)
 
 // These can be used to replace Teapot_PreDraw()
@@ -610,11 +617,14 @@ static const char* TeapotVS[] = {
 #   endif //TEAPOT_SHADER_USE_ACCURATE_NORMALS
     "uniform vec4 u_scaling;\n"
     "uniform vec3 u_lightVector;\n"
-    "uniform vec4 u_color;\n"
-    "uniform vec4 u_colorAmbient;\n"
-#   ifdef TEAPOT_SHADER_SPECULAR
-    "uniform vec4 u_colorSpecular;\n"   // R,G,B,SHININESS
+#   ifndef TEAPOT_SHADER_SPECULAR
+    "uniform vec4 u_colorData[2];\n"   // RGBA diffuse + RGBA ambient
+#   else //TEAPOT_SHADER_SPECULAR
+    "uniform vec4 u_colorData[3];\n"    // RGBA diffuse + RGBA ambient + RGBS specular (s=SHININESS)
+    "#define u_colorSpecular u_colorData[2]\n"
 #   endif //TEAPOT_SHADER_SPECULAR
+    "#define u_color u_colorData[0]\n"
+    "#define u_colorAmbient u_colorData[1]\n"
 #   ifdef TEAPOT_SHADER_FOG
     "uniform vec4 u_fogDistances;\n"
 #   ifndef TEAPOT_SHADER_FOG_HINT_FRAGMENT_SHADER
@@ -757,6 +767,10 @@ static const char* TeapotFS[] = {
 
 
 typedef struct {
+    float color[4];
+    float colorAmbient[4];
+    float colorSpecular[4];
+
     GLuint programId;
     GLuint vertexBuffer,elementBuffer;
     int startInds[TEAPOT_MESH_COUNT];
@@ -767,8 +781,9 @@ typedef struct {
     float aabbMax[TEAPOT_MESH_COUNT][3];
     GLint aLoc_vertex,aLoc_normal;
     GLint uLoc_mvMatrix,uLoc_pMatrix,uLoc_nCoefficients,uLoc_scaling,
-    uLoc_lightVector,uLoc_color,uLoc_colorAmbient,uLoc_colorSpecular,
-    uLoc_fogColor,uLoc_fogDistances,
+    uLoc_lightVector;
+    GLint uLoc_color,uLoc_colorAmbient,uLoc_colorSpecular;
+    GLint uLoc_fogColor,uLoc_fogDistances,
     uLoc_biasedShadowMvpMatrix,uLoc_shadowMap,uLoc_shadowDarkening,uLoc_shadowMapFactor,uLoc_shadowMapTexelIncrement;
 
     tpoat lightDirectionWorldSpace[3];
@@ -777,10 +792,6 @@ typedef struct {
     tpoat pMatrixFrustum[6][4];
     tpoat vMatrix[16];
     float scaling[3];
-
-    float color[4];
-    float colorAmbient[4];
-    float colorSpecular[4];
 
     tpoat vMatrixInverse[16];
     tpoat biasedShadowVpMatrix[16]; // actually what we store here is: biasedShadowVpMatrix * vMatrixInverse (so that we must multiply it per mvMatrix, instead of mMatrix)
@@ -1643,7 +1654,7 @@ void Teapot_SetScaling(float scalingX, float scalingY, float scalingZ)  {
 }
 void Teapot_SetColor(float R,float G,float B,float A)  {
     TIS.color[0]=R;TIS.color[1]=G;TIS.color[2]=B;TIS.color[3]=A;
-    glUniform4fv(TIS.uLoc_color,1,TIS.color);
+    /*glUniform4fv(TIS.uLoc_color,1,TIS.color);
     if (TIS.colorMaterialEnabled) {
         const float ambFac = 0.25f;
         Teapot_SetColorAmbient(R*ambFac,G*ambFac,B*ambFac);
@@ -1653,17 +1664,56 @@ void Teapot_SetColor(float R,float G,float B,float A)  {
             Teapot_SetColorSpecular(R*speFac,G*speFac,B*speFac,-1.f*A);
         }
 #       endif //TEAPOT_SHADER_SPECULAR
+    }*/
+    if (TIS.colorMaterialEnabled) {
+        const float ambFac = 0.25f;
+        TIS.colorAmbient[0]=R*ambFac;TIS.colorAmbient[1]=G*ambFac;TIS.colorAmbient[2]=B*ambFac;
+#       ifdef TEAPOT_SHADER_SPECULAR
+        {
+            const float speFac = 0.8f * A;
+            TIS.colorSpecular[0]=R*speFac;TIS.colorSpecular[1]=G*speFac;TIS.colorSpecular[2]=B*speFac;
+            if (A<0) TIS.colorSpecular[3]=-1.f*A;
+            glUniform4fv(TIS.uLoc_color,3,TIS.color);   // 3 vec4 in one call!
+        }
+#       else //TEAPOT_SHADER_SPECULAR
+        glUniform4fv(TIS.uLoc_color,2,TIS.color);   // 2 vec4 in one call!
+#       endif //TEAPOT_SHADER_SPECULAR
     }
+    else glUniform4fv(TIS.uLoc_color,1,TIS.color);
 }
 void Teapot_SetColorAmbient(float R,float G,float B)  {
     TIS.colorAmbient[0]=R;TIS.colorAmbient[1]=G;TIS.colorAmbient[2]=B;
     glUniform4fv(TIS.uLoc_colorAmbient,1,TIS.colorAmbient);
+}
+void Teapot_SetColorAmbientAndDiffuse(const float ambient[3],const float diffuse[4])    {
+    //if (!TIS.colorMaterialEnabled)  {
+        int k;for (k=0;k<3;k++)   {
+            TIS.color[k]=diffuse[k];
+            TIS.colorAmbient[k]=ambient[k];
+        }
+        TIS.color[3]=diffuse[3];
+        glUniform4fv(TIS.uLoc_color,2,TIS.color);   // 2 vec4 in one call!
+    //}
+    //else Teapot_SetColor(diffuse[0],diffuse[1],diffuse[2],diffuse[3]);
 }
 #ifdef TEAPOT_SHADER_SPECULAR
 void Teapot_SetColorSpecular(float R,float G,float B,float SHI) {
     TIS.colorSpecular[0]=R;TIS.colorSpecular[1]=G;TIS.colorSpecular[2]=B;
     if (SHI>0) TIS.colorSpecular[3]=SHI;
     glUniform4f(TIS.uLoc_colorSpecular,R,G,B,TIS.colorSpecular[3]);
+}
+void Teapot_SetColorAmbientDiffuseAndSpecular(const float ambient[3],const float diffuse[4],const float specular_plus_shininess[4])    {
+    //if (!TIS.colorMaterialEnabled)  {
+        int k;for (k=0;k<3;k++)   {
+            TIS.color[k]=diffuse[k];
+            TIS.colorAmbient[k]=ambient[k];
+            TIS.colorSpecular[k]=specular_plus_shininess[k];
+        }
+        TIS.color[3]=diffuse[3];
+        if (specular_plus_shininess[3]>0) TIS.colorSpecular[3]=specular_plus_shininess[3];
+        glUniform4fv(TIS.uLoc_color,3,TIS.color);   // 3 vec4 in one call!
+    //}
+    //else Teapot_SetColor(diffuse[0],diffuse[1],diffuse[2],diffuse[3]);
 }
 #endif //TEAPOT_SHADER_SPECULAR
 
@@ -2102,12 +2152,13 @@ void Teapot_DrawMulti_Mv(Teapot_MeshData* const* meshes,int numMeshes,int mustSo
             const Teapot_MeshData* md = meshes[i];
             TIS.meshOutlineEnabled = md->outlineEnabled;
             if (!TIS.colorMaterialEnabled)  {
-                Teapot_SetColorAmbient(md->colorAmbient[0],md->colorAmbient[1],md->colorAmbient[2]);
 #               ifdef TEAPOT_SHADER_SPECULAR
-                Teapot_SetColorSpecular(md->colorSpecular[0],md->colorSpecular[1],md->colorSpecular[2],md->colorSpecular[3]);
+                Teapot_SetColorAmbientDiffuseAndSpecular(md->colorAmbient,md->color,md->colorSpecular);
+#               else //TEAPOT_SHADER_SPECULAR
+                Teapot_SetColorAmbientAndDiffuse(md->colorAmbient,md->color);
 #               endif //TEAPOT_SHADER_SPECULAR
             }
-            Teapot_SetColor(md->color[0],md->color[1],md->color[2],md->color[3]);
+            else Teapot_SetColor(md->color[0],md->color[1],md->color[2],md->color[3]);
             Teapot_SetScaling(md->scaling[0]==0?1:md->scaling[0],md->scaling[1]==0?1:md->scaling[1],md->scaling[2]==0?1:md->scaling[2]);
             if (md->color[3]<1.f && startTransparentObjects==0) {
                 startTransparentObjects=1;
@@ -2121,6 +2172,50 @@ void Teapot_DrawMulti_Mv(Teapot_MeshData* const* meshes,int numMeshes,int mustSo
         TIS.meshOutlineEnabled = pushMeshOutlineEnabled;
     }
 }
+
+static __inline void Teapot_Private_DrawArmatureBone(const tpoat mMatrix16[16],tpoat length,void (*DrawCallback)(const tpoat mMatrix[16],TeapotMeshEnum meshId))   {
+    // Draws armature bone (in y direction with tail in mMatrix16)
+    const tpoat bwidth = length*0.2, bsphere0 = length*0.1, bsphere1 = length*0.05;
+    tpoat mMatrix[16];Teapot_Helper_CopyMatrix(mMatrix,mMatrix16);
+
+#   ifndef TEAPOT_CENTER_MESHES_ON_FLOOR
+    Teapot_Helper_TranslateMatrix(mMatrix,0,length,0);
+    Teapot_SetScaling(bsphere1,bsphere1,bsphere1);
+    DrawCallback(mMatrix,TEAPOT_MESH_SPHERE1);
+
+    Teapot_Helper_TranslateMatrix(mMatrix,0,-length,0);
+    Teapot_SetScaling(bsphere0,bsphere0,bsphere0);
+    DrawCallback(mMatrix,TEAPOT_MESH_SPHERE1);
+
+    Teapot_Helper_TranslateMatrix(mMatrix,0,length*0.25*0.5,0);
+    Teapot_Helper_RotateMatrix(mMatrix,180,1,0,0);
+    Teapot_SetScaling(bwidth,0.25*length,bwidth);
+    DrawCallback(mMatrix,TEAPOT_MESH_PYRAMID);
+    Teapot_Helper_RotateMatrix(mMatrix,-180,1,0,0);
+    Teapot_Helper_TranslateMatrix(mMatrix,0,length*0.5,0);
+    Teapot_SetScaling(bwidth,0.75*length,bwidth);
+    DrawCallback(mMatrix,TEAPOT_MESH_PYRAMID);
+#   else
+    Teapot_Helper_TranslateMatrix(mMatrix,0,length-bsphere1*0.5,0);
+    Teapot_SetScaling(bsphere1,bsphere1,bsphere1);
+    DrawCallback(mMatrix,TEAPOT_MESH_SPHERE1);
+
+    Teapot_Helper_TranslateMatrix(mMatrix,0,-length+(bsphere1-bsphere0)*0.5,0);
+    Teapot_SetScaling(bsphere0,bsphere0,bsphere0);
+    DrawCallback(mMatrix,TEAPOT_MESH_SPHERE1);
+
+    Teapot_Helper_TranslateMatrix(mMatrix,0,bsphere0*0.5+length*0.25,0);
+    Teapot_Helper_RotateMatrix(mMatrix,180,1,0,0);
+    Teapot_SetScaling(bwidth,0.25*length,bwidth);
+    DrawCallback(mMatrix,TEAPOT_MESH_PYRAMID);
+    Teapot_Helper_RotateMatrix(mMatrix,-180,1,0,0);
+    //
+    Teapot_SetScaling(bwidth,0.75*length,bwidth);
+    DrawCallback(mMatrix,TEAPOT_MESH_PYRAMID);
+#   endif
+}
+void Teapot_Helper_DrawArmatureBone(const tpoat mMatrix[16],tpoat length)   {Teapot_Private_DrawArmatureBone(mMatrix,length,&Teapot_Draw);}
+void Teapot_Helper_DrawArmatureBone_Mv(const tpoat mvMatrix[16],tpoat length)   {Teapot_Private_DrawArmatureBone(mvMatrix,length,&Teapot_Draw_Mv);}
 
 
 // Loading shader function
@@ -2559,9 +2654,9 @@ void Teapot_Init(void) {
     TIS.uLoc_nCoefficients = glGetUniformLocation(TIS.programId,"u_nCoefficients");
     TIS.uLoc_scaling = glGetUniformLocation(TIS.programId,"u_scaling");
     TIS.uLoc_lightVector = glGetUniformLocation(TIS.programId,"u_lightVector");
-    TIS.uLoc_color = glGetUniformLocation(TIS.programId,"u_color");
-    TIS.uLoc_colorAmbient = glGetUniformLocation(TIS.programId,"u_colorAmbient");
-    TIS.uLoc_colorSpecular = glGetUniformLocation(TIS.programId,"u_colorSpecular");
+    TIS.uLoc_color = glGetUniformLocation(TIS.programId,"u_colorData[0]");
+    TIS.uLoc_colorAmbient = glGetUniformLocation(TIS.programId,"u_colorData[1]");
+    TIS.uLoc_colorSpecular = glGetUniformLocation(TIS.programId,"u_colorData[2]");
     TIS.uLoc_fogColor = glGetUniformLocation(TIS.programId,"u_fogColor");
     TIS.uLoc_fogDistances = glGetUniformLocation(TIS.programId,"u_fogDistances");
     TIS.uLoc_biasedShadowMvpMatrix = glGetUniformLocation(TIS.programId,"u_biasedShadowMvpMatrix");

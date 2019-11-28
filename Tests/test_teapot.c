@@ -270,9 +270,6 @@ void DestroyGL() {
 }
 
 
-
-
-
 void DrawGL(void) 
 {	
     // We need to calculate the "instantFrameTime" for smooth camera movement and
@@ -311,6 +308,9 @@ void DrawGL(void)
 
     // Ground mesh (box)
     mMatrix[12]=0.0;    mMatrix[13]=-0.25;    mMatrix[14]=0.0;
+#   ifndef TEAPOT_CENTER_MESHES_ON_FLOOR
+    mMatrix[13]=-0.125;
+#   endif
     Teapot_SetScaling(8.f,0.25f,12.f);
     Teapot_SetColor(0.1f,0.6f,0.1f,1.0f);
     Teapot_Draw(mMatrix,TEAPOT_MESH_CUBIC_GROUND);
@@ -412,6 +412,35 @@ void DrawGL(void)
         // are always centered in the virtual center of their full sphere (regardless of the TEAPOT_CENTER_MESHES_ON_FLOOR definition):
         // they're there mainly for internal use when drawing: TEAPOT_MESH_CAPSULE
     }*/
+
+    /*{   // Test Teapot_Helper_DrawArmatureBone(...)
+        const tpoat length = 1.f;
+        Teapot_Helper_IdentityMatrix(mMatrix);
+        mMatrix[12]=0;mMatrix[14]=2;mMatrix[13]=0;
+        Teapot_Helper_RotateMatrix(mMatrix,20,0,0,1);
+        Teapot_Helper_RotateMatrix(mMatrix,30,1,0,0);
+
+        Teapot_LowLevel_StartDisablingLighting();
+        glDepthMask(GL_FALSE);glDisable(GL_DEPTH_TEST);
+        Teapot_SetColorAmbient(0.8f,0.8f,0.f);//0.75f);
+        Teapot_Helper_DrawArmatureBone(mMatrix,length);
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        glLineWidth(1.f);glEnable(GL_LINE_SMOOTH);  // not present in teapot.h (can be used). Better in InitGL().
+        //glPolygonOffset(2.0, 4);                  // this probably interferes with teapot.h
+        glEnable(GL_POLYGON_OFFSET_LINE);
+        Teapot_SetColorAmbient(0.6f,0.4f,0.f);
+        Teapot_Helper_DrawArmatureBone(mMatrix,length);
+        glDisable(GL_POLYGON_OFFSET_LINE);
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        glEnable(GL_DEPTH_TEST);glDepthMask(GL_TRUE);
+        Teapot_LowLevel_StopDisablingLighting();
+
+        // reset
+        Teapot_Helper_IdentityMatrix(mMatrix);
+        Teapot_SetScaling(1.f,1.f,1.f);
+    }*/
+
+
 
     Teapot_PostDraw();  // We can't call the Teapot_XXX methods used above anymore
     
