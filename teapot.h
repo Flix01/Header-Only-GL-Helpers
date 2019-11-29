@@ -58,7 +58,7 @@ extern "C" {
 #endif
 
 #ifndef TEAPOT_VERSION
-#   define TEAPOT_VERSION 1.2
+#   define TEAPOT_VERSION 1.21
 #endif //TEAPOT_VERSION
 
 
@@ -401,7 +401,8 @@ tpoat* Teapot_Helper_TranslateMatrix(tpoat* __restrict mInOut16,tpoat x,tpoat y,
 tpoat* Teapot_Helper_RotateMatrix(tpoat* __restrict mInOut16,tpoat degAngle,tpoat x,tpoat y,tpoat z);
 tpoat* Teapot_Helper_ScaleMatrix(tpoat* __restrict mInOut16,tpoat x,tpoat y,tpoat z);
 int Teapot_Helper_InvertMatrix(tpoat* __restrict mOut16,const tpoat* __restrict m16);
-void Teapot_Helper_InvertMatrixFast(tpoat* __restrict mOut16,const tpoat* __restrict m16);
+void Teapot_Helper_InvertTransformMatrix(tpoat* __restrict mOut16,const tpoat* __restrict m16);
+void Teapot_Helper_InvertTransformMatrixFast(tpoat* __restrict mOut16,const tpoat* __restrict m16);
 void Teapot_Helper_GetFrustumPlaneEquations(tpoat planeEquationsOut[6][4],const tpoat* __restrict vpMatrix16,int normalizePlanes);
 void Teapot_Helper_GetFrustumPoints(tpoat frustumPoints[8][4],const tpoat* __restrict vpMatrixInverse16);   // frustumPoints[i][3]==1
 
@@ -1050,14 +1051,39 @@ int Teapot_Helper_InvertMatrix(tpoat* __restrict mOut16,const tpoat* __restrict 
     }
     return 1;
 }
-void Teapot_Helper_InvertMatrixFast(tpoat* __restrict mOut16,const tpoat* __restrict m16)	{
+void Teapot_Helper_InvertTransformMatrix(tpoat* __restrict mOut16,const tpoat* __restrict m16)  {
+    // It works only for translation + rotation + scaling, and only
+    // when rotation can be represented by an unit quaternion
+    const tpoat* m = m16;
+    tpoat* n = mOut16;int i,i4,i4p1,i4p2;
+    const tpoat T[3] = {-m[12],-m[13],-m[14]};
+    // Step 1. Transpose the 3x3 submatrix
+    n[3]=m[3];n[7]=m[7];n[11]=m[11];n[15]=m[15];
+    n[0]=m[0];n[1]=m[4];n[2]=m[8];
+    n[4]=m[1];n[5]=m[5];n[6]=m[9];
+    n[8]=m[2];n[9]=m[6];n[10]=m[10];
+    // Step 2. Adjust scaling
+    for (i=0;i<3;i++)	{
+        tpoat rsi;
+        i4=4*i;i4p1=i4+1;i4p2=i4p1+1;
+        rsi = m[i4]*m[i4]+m[i4p1]*m[i4p1]+m[i4p2]*m[i4p2];
+        if (rsi>1.e-8f) rsi=(tpoat)1.0/rsi;
+        else rsi=(tpoat)1.0;
+        n[i]*=rsi;n[i+4]*=rsi;n[i+8]*=rsi;
+    }
+    // Step 3. Adjust translation
+    n[12]=T[0]*n[0] + T[1]*n[4] +T[2]*n[8];
+    n[13]=T[0]*n[1] + T[1]*n[5] +T[2]*n[9];
+    n[14]=T[0]*n[2] + T[1]*n[6] +T[2]*n[10];
+}
+void Teapot_Helper_InvertTransformMatrixFast(tpoat* __restrict mOut16,const tpoat* __restrict m16)	{
     // It works only for translation + rotation, and only
     // when rotation can be represented by an unit quaternion
     // scaling is discarded
     const tpoat* m = m16;
     tpoat* n = mOut16;
     const tpoat T[3] = {-m[12],-m[13],-m[14]};
-    tpoat w;
+    //tpoat w;
     // Step 1. Transpose the 3x3 submatrix
     n[3]=m[3];n[7]=m[7];n[11]=m[11];n[15]=m[15];
     n[0]=m[0];n[1]=m[4];n[2]=m[8];
@@ -1067,9 +1093,10 @@ void Teapot_Helper_InvertMatrixFast(tpoat* __restrict mOut16,const tpoat* __rest
     n[12]=T[0]*n[0] + T[1]*n[4] +T[2]*n[8];
     n[13]=T[0]*n[1] + T[1]*n[5] +T[2]*n[9];
     n[14]=T[0]*n[2] + T[1]*n[6] +T[2]*n[10];
-    w    =T[0]*n[3] + T[1]*n[7] +T[2]*n[11];
-    if (w!=0 && w!=1) {n[12]/=w;n[13]/=w;n[14]/=w;} // These last 2 lines are not strictly necessary AFAIK
+    //w    =T[0]*n[3] + T[1]*n[7] +T[2]*n[11];
+    //if (w!=0 && w!=1) {n[12]/=w;n[13]/=w;n[14]/=w;} // These last 2 lines are not strictly necessary AFAIK
 }
+
 void Teapot_Helper_GetFrustumPlaneEquations(tpoat planeEquationsOut[6][4],const tpoat* __restrict vpMatrix16,int normalizePlanes)   {
     // ax+by+cz+d=0 [xl,xr,yb,yt,zn,zf],normalizePlanes=0 -> no normalization
     tpoat m00 = vpMatrix16[0], m01 = vpMatrix16[4], m02 = vpMatrix16[8],  m03 = vpMatrix16[12];
@@ -1538,7 +1565,7 @@ void Teapot_SetViewMatrixAndLightDirection(const tpoat vMatrix[16],tpoat lightDi
     // lightDirectionViewSpace = v3_norm(m4_mul_dir(vMatrix,light_direction));
     Teapot_Helper_CopyMatrix(TIS.vMatrix,vMatrix);
 #   ifdef TEAPOT_SHADER_USE_SHADOW_MAP
-    Teapot_Helper_InvertMatrixFast(TIS.vMatrixInverse,TIS.vMatrix);
+    Teapot_Helper_InvertTransformMatrixFast(TIS.vMatrixInverse,TIS.vMatrix);
 #   endif //TEAPOT_SHADER_USE_SHADOW_MAP*/
     //int i;for (i=0;i<16;i++) TIS.vMatrix[i]=vMatrix[i];	// what's faster ?
     TIS.lightDirectionViewSpace[0] = lightDirectionWorldSpace[0]*TIS.vMatrix[0] + lightDirectionWorldSpace[1]*TIS.vMatrix[4] + lightDirectionWorldSpace[2]*TIS.vMatrix[8];
@@ -1783,7 +1810,7 @@ void Teapot_Draw_Mv(const tpoat mvMatrix[16], TeapotMeshEnum meshId)    {
         const float scaling[3] = {TIS.scaling[0],TIS.scaling[1],TIS.scaling[2]};
         const float aabbMin[3] = {TIS.aabbMin[meshId][0]*scaling[0],TIS.aabbMin[meshId][1]*scaling[1],TIS.aabbMin[meshId][2]*scaling[2]};
         const float aabbMax[3] = {TIS.aabbMax[meshId][0]*scaling[0],TIS.aabbMax[meshId][1]*scaling[1],TIS.aabbMax[meshId][2]*scaling[2]};
-        //tpoat matrix[16];Teapot_Helper_InvertMatrixFast(matrix,mvMatrix);
+        //tpoat matrix[16];Teapot_Helper_InvertTransformMatrixFast(matrix,mvMatrix);
 
         if (!Teapot_Helper_IsVisible(TIS.pMatrixFrustum,
                                      mvMatrix,

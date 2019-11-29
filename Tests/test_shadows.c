@@ -239,7 +239,7 @@ void ResizeGL(int w,int h) {
         // We set our pMatrix here in ResizeGL(), and we must notify teapot.h about it too.
         Teapot_Helper_Perspective(pMatrix,pMatrixFovyDeg,(float)w/(float)h,pMatrixNearPlane,pMatrixFarPlane);
         Teapot_SetProjectionMatrix(pMatrix);
-        Teapot_Helper_InvertMatrix(pMatrixInv,pMatrix); //Test (we can't use Teapot_Helper_InvertMatrixFast(...) here)
+        Teapot_Helper_InvertMatrix(pMatrixInv,pMatrix); //Test (we can't use Teapot_Helper_InvertTransformMatrix(...) here)
     }
 
     if (h>0) Dynamic_Resolution_Resize(w,h);    // The dynamic resolution texture (and the shadow map) change their size with this call
