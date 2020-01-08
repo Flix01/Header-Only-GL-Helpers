@@ -202,7 +202,7 @@ typedef float nmoat;
 #   define NM_SLERP_EPSILON ((nmoat)0.0001)
 #endif //NM_SLERP_EPSILON
 #ifndef NM_EPSILON
-#   define NM_EPSILON ((nmoat)0.0000001)
+#   define NM_EPSILON ((nmoat)0.00000000001)
 #endif
 
 #ifdef NM_ALIGN_STRUCTS
@@ -495,6 +495,10 @@ NM_API_DEF_EXT_INL int nm_Mat4UnProjectMvpInv(nmoat winX,nmoat winY,nmoat winZ,c
 NM_API_DEF_EXT_INL int nm_Mat4UnProject(nmoat winX,nmoat winY,nmoat winZ,const nmoat* NM_RESTRICT mvMatrix16, const nmoat* NM_RESTRICT pMatrix16, const int* viewport4,nmoat* NM_RESTRICT objX,nmoat* NM_RESTRICT objY,nmoat* NM_RESTRICT objZ);
 NM_API_DEF_EXT_INL int nm_Mat4UnProject4MvpInv(nmoat winX,nmoat winY,nmoat winZ,nmoat clipW,const nmoat* NM_RESTRICT mvpMatrixInv16,const int* viewport4,nmoat nearVal,nmoat farVal,nmoat* NM_RESTRICT objX,nmoat* NM_RESTRICT objY,nmoat* NM_RESTRICT objZ,nmoat* NM_RESTRICT objW);
 NM_API_DEF_EXT_INL int nm_Mat4UnProject4(nmoat winX, nmoat winY, nmoat winZ, nmoat clipW, const nmoat* NM_RESTRICT mvMatrix16, const nmoat* NM_RESTRICT pMatrix16, const int* viewport4, nmoat nearVal, nmoat farVal, nmoat* NM_RESTRICT objX, nmoat* NM_RESTRICT objY, nmoat* NM_RESTRICT objZ, nmoat* NM_RESTRICT objW);
+NM_API_DEF_EXT_INL void nm_Mat4UnProjectMouseCoords(nmoat* NM_RESTRICT rayOriginOut3,nmoat* NM_RESTRICT rayDirOut3,int mouseX,int mouseY,const nmoat* NM_RESTRICT vpMatrixInv,const int* viewport4);
+NM_API_DEF_EXT_INL int nm_Mat4GetMeshUnderMouseFromRay(int numMeshes,void (*getMeshDataCallback)(int idx,nmoat* mMatrix16InOut,nmoat aabbMinOut[3],nmoat aabbMaxOut[3],void* userData),const nmoat* rayOrigin3,const nmoat* rayDir3,nmoat* pOptionalDistanceOut,void* userData);
+NM_API_DEF_EXT_INL void nm_Mat4ExtractScalingFromTransformMatrix(const nmoat* NM_RESTRICT m16,nmoat* NM_RESTRICT scaOut3,nmoat* NM_RESTRICT optionalMOut16);
+
 
 NM_API_DEF_EXT_INL nmoat* nm_Mat4Translate(nmoat* NM_RESTRICT mInOut16,nmoat x,nmoat y,nmoat z);
 NM_API_DEF_EXT_INL nmoat* nm_Mat4Rotate(nmoat* NM_RESTRICT mInOut16,nmoat degAngle,nmoat x,nmoat y,nmoat z);
@@ -509,7 +513,9 @@ NM_API_DEF_EXT_INL void nm_Mat4InvertXZAxisInPlace(nmoat* NM_RESTRICT m16);
 NM_API_DEF_EXT_INL nmoat* nm_Mat4InvertXZAxis(nmoat* NM_RESTRICT mOut16,const nmoat* NM_RESTRICT m16);
 
 NM_API_DEF_EXT_INL void nm_Mat4MulDir(const nmoat* NM_RESTRICT m16,nmoat* NM_RESTRICT dirOut3,const nmoat dirX,nmoat dirY,nmoat dirZ);
+/*NM_API_DEF_EXT_INL void nm_Mat4MulDirWithWDivision(const nmoat* NM_RESTRICT m16,nmoat* NM_RESTRICT dirOut3,const nmoat dirX,nmoat dirY,nmoat dirZ);*/
 NM_API_DEF_EXT_INL void nm_Mat4MulPos(const nmoat* NM_RESTRICT m16,nmoat* NM_RESTRICT posOut3,const nmoat posX,nmoat posY,nmoat posZ);
+NM_API_DEF_EXT_INL void nm_Mat4MulPosWithWDivision(const nmoat* NM_RESTRICT m16,nmoat* NM_RESTRICT posOut3,const nmoat posX,nmoat posY,nmoat posZ);
 
 NM_API_DEF_EXT_INL int nm_AreMat4EqualEps(const nmoat* NM_RESTRICT a16,const nmoat* NM_RESTRICT b16,nmoat eps);
 NM_API_DEF_EXT_INL int nm_AreMat4Equal(const nmoat* NM_RESTRICT a16,const nmoat* NM_RESTRICT b16);
@@ -3084,6 +3090,109 @@ NM_API_IMPL int nm_Mat4UnProject4(nmoat winX, nmoat winY, nmoat winZ, nmoat clip
     nm_Mat4Invert(invpm,nm_Mat4Mul(pm,pMatrix16,mvMatrix16));
     return nm_Mat4UnProject4MvpInv(winX,winY,winZ,clipW,invpm,viewport4,farVal,nearVal,objX,objY,objZ,objW);
 }
+NM_API_IMPL void nm_Mat4UnProjectMouseCoords(nmoat* NM_RESTRICT rayOriginOut3,nmoat* NM_RESTRICT rayDirOut3,int mouseX,int mouseY,const nmoat* NM_RESTRICT vpMatrixInv,const int* viewport4)   {
+    // rayOriginOut3 and rayDirOut3 are in world space
+    nmoat rayOrigin[3] = {0,0,0};
+    nmoat rayDir[3] = {0,0,-1};
+    int i;
+    // Find rayOrigin and rayDir (world space)
+    //nm_Mat4MultMatrix(vpMatrixInv,TIS.pMatrix,TIS.vMatrix);
+    //nm_Mat4InvertMatrix(vpMatrixInv,vpMatrixInv);
+    nm_Mat4UnProjectMvpInv(mouseX,viewport4[3]-mouseY-1,0.0,vpMatrixInv,viewport4,&rayOrigin[0],&rayOrigin[1],&rayOrigin[2]);
+    nm_Mat4UnProjectMvpInv(mouseX,viewport4[3]-mouseY-1,1.0,vpMatrixInv,viewport4,&rayDir[0],&rayDir[1],&rayDir[2]);
+    for (i=0;i<3;i++) rayDir[i]-=rayOrigin[i];
+    nm_Vec3Normalize(rayDir);
+    //printf("rayOrigin={%1.2f,%1.2f,%1.2f} rayDir={%1.2f,%1.2f,%1.2f}\n",rayOrigin[0],rayOrigin[1],rayOrigin[2],rayDir[0],rayDir[1],rayDir[2]);
+    for (i=0;i<3;i++) {
+        if (rayDirOut3) rayDirOut3[i] = rayDir[i];
+        if (rayOriginOut3) rayOriginOut3[i] = rayOrigin[i];
+    }
+}
+NM_API_IMPL int nm_Mat4GetMeshUnderMouseFromRay(int numMeshes,void (*getMeshDataCallback)(int idx,nmoat* mMatrix16InOut,nmoat aabbMinOut[3],nmoat aabbMaxOut[3],void* userData),const nmoat* rayOrigin3,const nmoat* rayDir3,nmoat* pOptionalDistanceOut,void* userData)   {
+    // ray is in world space
+    // code based on http://www.opengl-tutorial.org/miscellaneous/clicking-on-objects/picking-with-custom-ray-obb-function/
+    int i,j,rv = -1;
+    nmoat intersection_distance = 0;
+    nmoat obbMatrix[16]={1,0,0,0,   0,1,0,0,    0,0,1,0,    0,0,0,1};
+    if (pOptionalDistanceOut) *pOptionalDistanceOut=0.f;
+    if (!getMeshDataCallback || numMeshes==0) return -1;
+    for (i=0;i<numMeshes;i++)   {
+        nmoat tMin = 0;nmoat tMax = (nmoat)1000000000000;
+        int noCollisionDetected = 0;
+        nmoat obbPosDelta[3],aabbMin[3],aabbMax[3];
+
+        getMeshDataCallback(i,obbMatrix,aabbMin,aabbMax,userData);
+
+        for (j=0;j<3;j++)  {obbPosDelta[j] = obbMatrix[12+j]-rayOrigin3[j];}
+        for (j=0;j<3;j++)   {
+            if (!noCollisionDetected)   {
+                int j4 = 4*j;
+                // Test intersection with the 2 planes perpendicular to the OBB's j axis
+#               ifdef OLD_CODE
+                const nmoat axis[3] = {obbMatrix[j4],obbMatrix[j4+1],obbMatrix[j4+2]};
+                const nmoat e = nm_Mat4Vector3Dot(axis, obbPosDelta);
+                const nmoat f = nm_Mat4Vector3Dot(rayDir3, axis);
+#               else /* this works for scaling inside matrix too */
+                nmoat axis[3] = {obbMatrix[j4],obbMatrix[j4+1],obbMatrix[j4+2]},e,f;
+                nmoat sca = nm_Vec3Dot(axis,axis);
+                if (sca<(nmoat)0.00009 || sca>(nmoat)1.00001) {
+                    sca = sqrt(sca);
+                    aabbMin[j]*=sca;aabbMax[j]*=sca;
+                    sca=(nmoat)1/sca;axis[0]*=sca;axis[1]*=sca;axis[2]*=sca;
+                }
+                e = nm_Vec3Dot(axis, obbPosDelta);
+                f = nm_Vec3Dot(rayDir3, axis);
+#               endif
+
+                //if ( abs(f) > 0.001)  // @Flix: the reference code used this (but it does not work for me; so maybe my selection does not work with a projection ortho matrix...)
+                {
+                    // Standard case
+                    // t1 and t2 now contain distances betwen ray origin and ray-plane intersections:
+                    nmoat t1 = (e+aabbMin[j])/f; // Intersection with the "left" plane
+                    nmoat t2 = (e+aabbMax[j])/f; // Intersection with the "right" plane
+                    // We want t1 to represent the nearest intersection, so if it's not the case, invert t1 and t2
+                    if (t1>t2)  {nmoat w=t1;t1=t2;t2=w;}
+                    if (t2 < tMax)    tMax = t2;
+                    if (t1 > tMin)    tMin = t1;
+                    // And here's the trick :
+                    // If "far" is closer than "near", then there is NO intersection.
+                    // See the images in the tutorials for the visual explanation.
+                    if (tMin > tMax) noCollisionDetected=1;
+
+                }
+                /*else    {
+                    // Rare case : the ray is almost parallel to the planes, so they don't have any "intersection"
+                    if(-e+aabbMin[j] > 0.0 || -e+aabbMax[j] < 0.0) noCollisionDetected=1;
+                }*/
+            }
+        }
+
+        if (!noCollisionDetected && (intersection_distance<=0 || intersection_distance>tMin))   {
+            intersection_distance = tMin;
+            rv = i;
+        }
+    }
+
+    if (pOptionalDistanceOut) *pOptionalDistanceOut=intersection_distance;
+    return rv;
+}
+NM_API_IMPL void nm_Mat4ExtractScalingFromTransformMatrix(const nmoat* NM_RESTRICT m16,nmoat* NM_RESTRICT scaOut3,nmoat* NM_RESTRICT optionalMOut16)   {
+    int i,j,i4;nmoat tmp[3]={0,0,0},t;;
+    for (i=0;i<3;i++)   {
+        nmoat* v = &tmp[i];
+        i4=4*i;for (j=0;j<3;j++)   {t=m16[i4+j];(*v)+=t*t;}
+        if ((*v)<(nmoat)0.00009 || (*v)>(nmoat)1.00001) *v=sqrt(*v);
+        else *v=(nmoat)1;
+        if (scaOut3) scaOut3[i]=*v;
+    }
+    if (optionalMOut16) {
+        if (optionalMOut16!=m16) nm_Mat4Copy(optionalMOut16,m16);
+        nm_Mat4Scale(optionalMOut16,(nmoat)1/tmp[0],(nmoat)1/tmp[1],(nmoat)1/tmp[2]);
+        //for (i=0;i<3;i++) {optionalMOut16[12+i]/=tmp[i];}   // must translation be scaled too?
+    }
+    //fprintf(stderr,"Extracted scaling: %1.4f,%1.4f,%1.4f\n",tmp[0],tmp[1],tmp[2]);
+}
+
 
 NM_API_IMPL nmoat* nm_Mat4Translate(nmoat* NM_RESTRICT mInOut16,nmoat x,nmoat y,nmoat z)  {
 #ifdef NM_USE_LEGACY_CODE
@@ -3813,23 +3922,31 @@ NM_API_IMPL const nmoat* nm_Mat4LookAtYX(nmoat* NM_RESTRICT mInOut16,nmoat lookA
 }
 NM_API_IMPL const nmoat* nm_Mat4LookAtYX2D(nmoat* NM_RESTRICT mInOut16,nmoat lookAtX,nmoat lookAtZ,nmoat minDistanceAllowed/*=0*/,nmoat maxDistanceAllowed/*=0*/,nmoat pitchLimit/* = 1.483486111*/)    {return nm_Mat4LookAtYX(mInOut16,lookAtX,mInOut16[13],lookAtZ,minDistanceAllowed,maxDistanceAllowed,pitchLimit);}
 
-NM_API_IMPL void nm_Mat4MulDir(const nmoat* NM_RESTRICT m16,nmoat* NM_RESTRICT dirOut3,const nmoat dirX,nmoat dirY,nmoat dirZ) {
-    //nmoat w;
+/*NM_API_IMPL void nm_Mat4MulDirWithWDivision(const nmoat* NM_RESTRICT m16,nmoat* NM_RESTRICT dirOut3,const nmoat dirX,nmoat dirY,nmoat dirZ) {
+    nmoat w;
     dirOut3[0] = dirX*m16[0] + dirY*m16[4] + dirZ*m16[8];
     dirOut3[1] = dirX*m16[1] + dirY*m16[5] + dirZ*m16[9];
     dirOut3[2] = dirX*m16[2] + dirY*m16[6] + dirZ*m16[10];
-    //w          = dirX*m16[3] + dirY*m16[7] + dirZ*m16[11]; // + m[15] ?
-    //if (w!=0 && w!=1) {dirOut3[0]/=w;dirOut3[1]/=w;dirOut3[2]/=w;}
-    /* not sure if we should activate 'w' division here or not... */
-}
-NM_API_IMPL void nm_Mat4MulPos(const nmoat* NM_RESTRICT m16,nmoat* NM_RESTRICT posOut3,const nmoat posX,nmoat posY,nmoat posZ) {
-    //nmoat w;
+    w          = dirX*m16[3] + dirY*m16[7] + dirZ*m16[11]; // + m16[15] ?
+    if (w!=0 && w!=1) {dirOut3[0]/=w;dirOut3[1]/=w;dirOut3[2]/=w;}
+}*/
+NM_API_IMPL void nm_Mat4MulPosWithWDivision(const nmoat* NM_RESTRICT m16,nmoat* NM_RESTRICT posOut3,const nmoat posX,nmoat posY,nmoat posZ) {
+    nmoat w;
     posOut3[0] = posX*m16[0] + posY*m16[4] + posZ*m16[8] + m16[12];
     posOut3[1] = posX*m16[1] + posY*m16[5] + posZ*m16[9] + m16[13];
     posOut3[2] = posX*m16[2] + posY*m16[6] + posZ*m16[10]+ m16[14];
-    //w          = posX*m16[3] + posY*m16[7] + posZ*m16[11]+ m16[15];
-    //if (w!=(nmoat)0 && w!=(nmoat)1) {posOut3[0]/=w;posOut3[1]/=w;posOut3[2]/=w;}
-    /* not sure if we should activate 'w' division here or not... */
+    w          = posX*m16[3] + posY*m16[7] + posZ*m16[11]+ m16[15];
+    if (w!=(nmoat)0 && w!=(nmoat)1) {posOut3[0]/=w;posOut3[1]/=w;posOut3[2]/=w;}
+}
+NM_API_IMPL void nm_Mat4MulDir(const nmoat* NM_RESTRICT m16,nmoat* NM_RESTRICT dirOut3,const nmoat dirX,nmoat dirY,nmoat dirZ) {
+    dirOut3[0] = dirX*m16[0] + dirY*m16[4] + dirZ*m16[8];
+    dirOut3[1] = dirX*m16[1] + dirY*m16[5] + dirZ*m16[9];
+    dirOut3[2] = dirX*m16[2] + dirY*m16[6] + dirZ*m16[10];
+}
+NM_API_IMPL void nm_Mat4MulPos(const nmoat* NM_RESTRICT m16,nmoat* NM_RESTRICT posOut3,const nmoat posX,nmoat posY,nmoat posZ) {
+    posOut3[0] = posX*m16[0] + posY*m16[4] + posZ*m16[8] + m16[12];
+    posOut3[1] = posX*m16[1] + posY*m16[5] + posZ*m16[9] + m16[13];
+    posOut3[2] = posX*m16[2] + posY*m16[6] + posZ*m16[10]+ m16[14];
 }
 
 

@@ -78,6 +78,8 @@ Tests/test_teapot
 Tests/test_matrix_stack
 Tests/test_im
 Tests/test_sdf
+Tests/test_character
+Tests/test_character_standalone
 glImmediateMode.h
 obj.h
 Sdf/
@@ -87,6 +89,9 @@ sdf_c.h
 Tests/test_sdf.c
 Tests/test_sdf_c
 c_vector*
+bvh.h
+Tests/test_bvh*
+
 
 
 

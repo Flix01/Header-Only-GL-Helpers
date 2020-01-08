@@ -139,6 +139,7 @@ void Dynamic_Resolution_Bind_Shadow();
 // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);  // Here (not above)
 void Dynamic_Resolution_Shadow_Set_VpMatrix(const droat vpMatrix[16]);
 void Dynamic_Resolution_Shadow_Set_MMatrix(const droat mMatrix[16]);
+void Dynamic_Resolution_Shadow_Set_MMatrixFloat(const float mMatrix[16]);   /* same as above (enforce float) */
 void Dynamic_Resolution_Shadow_Set_Scaling(float scalingX,float scalingY,float scalingZ);
 // draw objects here (disable all glDisableVertexAttrib(...) except zero)
 void Dynamic_Resolution_Unbind_Shadow();
@@ -284,7 +285,7 @@ extern "C"	{
 
 __inline static void Dynamic_Resolution_Helper_GlUniformMatrix4v(GLint location,GLsizei count,GLboolean transpose,const droat* value) {
     const float* fvalue = NULL;
-#   ifndef TEAPOT_MATRIX_USE_DOUBLE_PRECISION
+#   ifndef DYNAMIC_RESOLUTION_USE_DOUBLE_PRECISION
     fvalue = value;
 #   else
     float val[16];Dynamic_Resolution_Helper_ConvertMatrixd2f16(val,value);fvalue=val;
@@ -937,6 +938,26 @@ void Dynamic_Resolution_Shadow_Set_MMatrix(const droat mMatrix[16]) {
     Dynamic_Resolution_Helper_GlUniformMatrix4v(render_target.shadow_uLoc_shadowMvpMatrix,1,GL_FALSE,tmp);
 #   else
     (void)mMatrix;
+#   endif
+}
+void Dynamic_Resolution_Shadow_Set_MMatrixFloat(const float mMatrix[16]) {
+#   ifndef DYNAMIC_RESOLUTION_USE_DOUBLE_PRECISION
+    Dynamic_Resolution_Shadow_Set_MMatrix(mMatrix);
+#   else
+#   ifndef DYNAMIC_RESOLUTION_SHADOW_MAP_DISABLED
+    /* Bad: 2 conversions! */
+    droat tmp[16];
+    Dynamic_Resolution_Helper_ConvertMatrixf2d16(tmp,mMatrix);
+    Dynamic_Resolution_Helper_MultMatrix(tmp,render_target.shadowVpMatrix,tmp);
+    Dynamic_Resolution_Helper_GlUniformMatrix4v(render_target.shadow_uLoc_shadowMvpMatrix,1,GL_FALSE,tmp);
+
+    /*float tmp[16];
+    Dynamic_Resolution_Helper_ConvertMatrixd2f16(tmp,render_target.shadowVpMatrix);
+    Dynamic_Resolution_Helper_MultMatrixFloat(tmp,tmp,mMatrix); // Not present
+    glUniformMatrix4fv(render_target.shadow_uLoc_shadowMvpMatrix,1,GL_FALSE,tmp);*/
+#   else
+    (void)mMatrix;
+#   endif
 #   endif
 }
 

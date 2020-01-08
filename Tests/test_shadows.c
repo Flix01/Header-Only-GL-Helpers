@@ -559,7 +559,7 @@ void DrawGL(void)
     // There is also a version that takes lpMatrix and lvMatrix and multiplies them
     // and another version that takes lvpMatrix and its frustum planes and performs frustum culling
     // (try it, but it's untested and probably slower in many cases)
-    Teapot_HiLevel_DrawMulti_ShadowMap_Vp(pMeshData,numMeshData,lvpMatrix,0.5f);
+    Teapot_HiLevel_DrawMulti_ShadowMap_Vp(pMeshData,numMeshData,lvpMatrix,0.5f,NULL,NULL);
     // The HiLevel function above uses parts of dynamic_resolution_h too, but you can unwrap it and use low-level functions as well (see its code).
 
     // Most noticeably, it wraps functions like:
