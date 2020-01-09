@@ -44,13 +44,67 @@ So, to be strict, we should compile the code using -std=c99, but I prefer using 
 Also, older versions of MSVC seem to work correctly out of the box with /DCHA_NO_C99_MATH
 (even if they're not fully C99 compliant, and/or you can't specify the C dialect to use).
 
+===================
+BASIC USAGE:
+===================
+/*
+// Suppose you already have an OpenGL application (that supports the fixed-function-pipeline) working
+// Make the following changes, and if everything goes well, you should see something on screen...
+// (This is a cut-down version of 'test_character_standalone.c'.
+// If you don't support the fixed function pipeline, please see 'test_character.c'.)
 
+... // OpenGL must be available from here
+
+#define CHA_HAS_OPENGL_SUPPORT
+#define CHA_USE_VBO                 // optional: it just creates and uses 'vertex buffer objects' (vbo), instead of glBegin(GL_TRIANGLES)/glEnd()
+#define CHA_HINT_USE_FFP_VBO        // mandatory if CHA_USE_VBO (otherwise 'vbos' need to know shader attribute locations)
+//#define CHA_HINT_USE_VAO          // optional
+#define CHARACTER_IMPLEMENTATION
+#include <character.h>
+
+static struct cha_character_group* group = NULL;    // global
+
+void InitGL(void) {
+    ...
+    Character_Init();
+    group = Character_CreateGroup(3,3,1.85f,1.75f);
+    ...
+}
+void DestroyGL(void)    {
+    ...
+    if (group) {Character_DestroyGroup(group);group=NULL;}
+    Character_Destroy();
+    ...
+}
+void DrawGL(void)   {
+    static float vMatrix[16];
+    ...
+    chm_Mat4LookAtf(vMatrix,0.f,3.f,15.f,0.f,1.5f,0.f,0.f,1.f,0.f);
+    //glLoadMatrixf(vMatrix);
+    //glLightfv(GL_LIGHT0,GL_POSITION,lightDirection);  // Important call: the ffp must recalculate internally lightDirectionEyeSpace based on vMatrix [=> every frame]
+
+    // optionally move and aninate characters here (see the demo)... and then call
+    cha_character_group_updateMatrices(&group,1,vMatrix,NULL);    // if 'pMatrixNormalizedFrustumPlanes==NULL' there's no frustum culling (you can calculate it in ResizeGL(), see the demo)
+
+    glPushMatrix();
+        glLoadIdentity();
+        // disable color material if you enabled it
+        Character_DrawGroupOpengl(&group,1,0);
+        // reenable it if necessary
+    glPopMatrix();
+
+    ...
+}
+
+// That's all! Easy? Yes.
+*/
+
+/*
 ===================
 A POSSIBLE ROADMAP:
 ===================
 -> Move all structs to the declaration section so that they are exposed.
 -> Choose the functions to be exposed and expose them (currently this file works only when the implementation is defined).
--> Write some basic usage docs (for now, see Tests/character_standalone.c).
 -> Decide if we need to merge 'character_inl.h' or not.
 -> Should we elaborate some higher-level animation API or not? And how? (I've never used programs like Unity 3D and Unreal Engine, so I don't know what kind of API is better for the user).
 -> Add other animations.
@@ -58,6 +112,7 @@ A POSSIBLE ROADMAP:
 
 -> Remove all unnecessary chm_ math functions to slim file size a bit.
 -> Add dependency to <float.h> for FLT_MAX (currently I hard code it, but better be on the safe side).
+-> CHA_HINT_VERTEX_ATTRIBUTE_LOCATION and CHA_HINT_NORMAL_ATTRIBUTE_LOCATION are const... Must we set them at runtime?
 */
 
 #ifndef CHARACTER_H_
