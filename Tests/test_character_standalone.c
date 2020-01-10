@@ -1131,7 +1131,7 @@ void DrawGL(void)
 #       endif //USE_UNSTABLE_SHADOW_MAPPING_TECHNIQUE
 
         /* 'chm_GetLightViewProjectionMatrix(...)' gives us 'lvpMatrix', so we miss 'vMatrixInverse' */
-        chm_Mat4Mul(vilvpMatrix,vilvpMatrix,vMatrixInverse);   /* with this line we must use inst->mvMatrix instead of inst->mMatrix(Arranged) */
+        chm_Mat4Mul(vilvpMatrix,vilvpMatrix,vMatrixInverse);   /* with this line we can use inst->mvMatrixOut (instead of inst->mMatrixOut, thst is missing) */
 
         // Draw to shadow map texture
         glMatrixMode(GL_PROJECTION);glPushMatrix();glLoadIdentity();glMatrixMode(GL_MODELVIEW);        // We'll set the combined light view-projection matrix in GL_MODELVIEW (do you know that it's the same?)
@@ -1252,6 +1252,23 @@ void DrawGL(void)
 }
 
 void DrawGeometry(int isShadowPass) {
+/*
+    This method is called twice, once with isShadowPass==1 and once with isShadowPass==0.
+    However, when we call it with isShadowPass==1 in DrawGL(), we do:
+
+    glPushMatrix();
+        glLoadMatrix(vilvpMatrix); // we load both (light) projection and view matrices here (it's the same after all)
+        DrawGeometry(1);
+    glPopMatrix();
+
+    This is bad, because if we use  glLoadMatrix(...) here, we erase glLoadMatrix(vilvpMatrix), and the
+    shadow will be wrong.
+
+    So for now we just take care of NOT using glLoadMatrix(...) here at all, we just do:
+    glMultMatrix(mvMatrix); all the time
+
+*/
+
     choat m[16];
     glPushMatrix();
 
@@ -1265,6 +1282,7 @@ void DrawGeometry(int isShadowPass) {
     }
     glPopMatrix();
 
+#   if 1
      // test hand-grabbing objects
     glPushMatrix();
     {
@@ -1277,14 +1295,13 @@ void DrawGeometry(int isShadowPass) {
 
         // Basically, if bone_idx!=CHA_BONE_NAME_ROOT (why should you need to place an object in the root bone?),
         // you simply have to multiply mi->mvMatrix and mGrab
-        glLoadMatrixf(mi->mvMatrix);
+        glMultMatrixf(mi->mvMatrix);
 #       ifdef CHA_ALLOW_ROOT_ONLY_POSE_OPTIMIZATION        
         if (bone_idx!=CHA_BONE_NAME_ROOT) glMultMatrixf(mGrab);
         else glRotatef(90.f,1.f,0.f,0.f);
 #       else
         glMultMatrixf(mGrab);
 #       endif
-
 
         // draw an object (without any offset transform here)
         glScalef(0.75f,0.25f,0.75f);
@@ -1301,9 +1318,9 @@ void DrawGeometry(int isShadowPass) {
         glScalef(0.75f,0.75f,0.025f);
         glColor3f(0.f,0.f,1.f);
         glutSolidCylinder(0.1,2.,8,8);
-
     }
     glPopMatrix();
+#   endif
 
     // draw bounding box (for the mouse-selected character)
     if (!isShadowPass && g_character_instance_selected)
@@ -1323,7 +1340,7 @@ void DrawGeometry(int isShadowPass) {
                 // We use glutWireCube(1.f), so we must scale the matrix in the three dimensions with the extents of our aabb
                 chm_Mat4Translatef(mv,mesh->aabb_center[0],mesh->aabb_center[1],mesh->aabb_center[2]);
                 chm_Mat4Scalef(mv,mesh->aabb_half_extents[0]*2.f,mesh->aabb_half_extents[1]*2.f,mesh->aabb_half_extents[2]*2.f);
-                glLoadMatrixf(mv);
+                glMultMatrixf(mv);
 
                 glColor4f(0.5f,0.25f,0.f,1.f);
                 glLineWidth(4.f);glutWireCube(1.f);

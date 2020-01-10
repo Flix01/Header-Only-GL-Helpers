@@ -3714,8 +3714,12 @@ void cha_character_instance_draw(const struct cha_character_instance* inst,int n
     if (no_materials) mesh_name_mask_to_exclude|=CHA_MESH_MASK_MOUTH_AND_EYE;
     for (mi_idx=0;mi_idx<inst->num_meshes;mi_idx++)    {
         const struct cha_mesh_instance* mi = &inst->mesh_instances[mi_idx];
-        if (!mi->culled)    {
-            const int mi_idx_mask = (1<<(unsigned)mi_idx);
+        const int mi_idx_mask = (1<<(unsigned)mi_idx);
+        if (!mi->culled
+#               ifndef CHA_CULL_ALL_MESH_INSTANCES_WHEN_NO_MATERIALS_IS_SET
+                || (no_materials && ((mi_idx_mask&(CHA_MESH_MASK_BODY|CHA_MESH_MASK_MOUTH_AND_EYE))==0))  /* this line draws culled HEADs when 'no_materials' is set (avoids headless shadows in some cases) */
+#               endif
+                )    {
             CHA_ASSERT(mi->mesh);
             if (!(mesh_name_mask_to_exclude&mi_idx_mask)) {
                 (*mesh_instance_draw_callback)(mi,use_parent_offset_matrix_link ? mi->mvMatrix_link : mi->mvMatrix,no_materials,user_data);
@@ -3734,6 +3738,13 @@ struct cha_character_group {
     struct cha_character_instance *men,* ladies;int num_men,num_ladies;   /* these are just references into the 'instances' array */
 };
 
+/* This block is completely optional */
+#ifndef CHA_FLT_MAX
+#   ifdef CHA_DOUBLE_PRECISION
+#   include <float.h>
+#   define CHA_FLT_MAX FLT_MAX
+#   endif
+#endif
 
 void cha_character_group_updateMatrices(struct cha_character_group** pp,int num_group_pointers,const choat* CHA_RESTRICT vMatrix,const float pMatrixNormalizedFrustumPlanesOrNull[6][4])  {
     /* inst->mMatrixOut = inst->mMatrixIn + scaling + rotation(.blend2gl);  -> read-only */
@@ -3879,7 +3890,7 @@ void cha_character_group_draw(struct cha_character_group*const* pp,int num_group
         const struct cha_character_group* g = pp[gi];
         for (i=0;i<g->num_instances;i++)    {
             const struct cha_character_instance* inst = &g->instances[i];
-            if (inst->active)   {
+            if (inst->active && !inst->culled)   {
                 cha_character_instance_draw(inst,no_materials,mesh_name_mask_to_exclude,mesh_instance_draw_callback,user_data);
             }
         }
