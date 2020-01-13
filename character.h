@@ -3657,9 +3657,7 @@ struct cha_character_instance {
 #   else
     choat mMatrixIn[16];      // yours    ->  write-only
 #   endif
-    choat mMatrixOut[16];  // mMatrixOut = mMatrixIn + scaling + rotation(.blend2gl)  -> read-only
-    //float mvMatrixWithoutRootBoneOutOut[16]; // mvMatrixWithoutRootBoneOutOut = vMatrix * mMatrixOut (always float) -> read-only
-    float mvMatrixOut[16];  // a vMatrix*mMatrixOut (always float) that takes armature root bone animation into account (mesh_instances[0].mesh->aabbMin/Max)
+    float mvMatrixOut[16];  // a vMatrix*mMatrixIn*scaling*rotation(.blend2gl) that takes armature root bone animation into account (it's the origin for mesh_instances[0].mesh->aabbMin/Max)
     float scaling[3];         // read/write
     int active;            // yours (it excludes the instance when 0)
     int culled;            // read-only
@@ -3751,9 +3749,9 @@ struct cha_character_group {
 #endif
 
 void cha_character_group_updateMatrices(struct cha_character_group** pp,int num_group_pointers,const choat* CHA_RESTRICT vMatrix,const float pMatrixNormalizedFrustumPlanesOrNull[6][4])  {
-    /* inst->mMatrixOut = inst->mMatrixIn + scaling + rotation(.blend2gl);  -> read-only */
     int gi,i,k,l;choat tm[16]={1,0,0,0,  0,0,-1,0,   0,1,0,0,    0,0,0,1};
-    float mvMatrixWithoutRootBoneOut[16];
+    choat mMatrixOut[16];                   /* inst->mMatrixIn*scaling*rotation(.blend2gl); */
+    float mvMatrixWithoutRootBoneOut[16];   /* vMatrix*mMatrixOut */
 #   ifdef CHA_DEBUG_FRUSTUM_CULLING
     int num_culled_instances[CHA_MESH_NAME_COUNT+1]=CHA_ZERO_INIT;
     static int num_culled_instances_last[CHA_MESH_NAME_COUNT+1]=CHA_ZERO_INIT;
@@ -3769,9 +3767,9 @@ void cha_character_group_updateMatrices(struct cha_character_group** pp,int num_
                 inst->culled = 0;
                 tm[0]=inst->scaling[0];tm[6]=-inst->scaling[2];tm[9]=inst->scaling[1];
 #               ifdef CHA_DOUBLE_PRECISION
-                chm_Mat4MulUncheckArgsd(inst->mMatrixOut,inst->mMatrixIn,tm); // (with so many zeros we can do better...)
+                chm_Mat4MulUncheckArgsd(mMatrixOut,inst->mMatrixIn,tm); // (with so many zeros we can do better...)
 #               else
-                chm_Mat4MulUncheckArgsf(inst->mMatrixOut,inst->mMatrixIn,tm); // (with so many zeros we can do better...)
+                chm_Mat4MulUncheckArgsf(mMatrixOut,inst->mMatrixIn,tm); // (with so many zeros we can do better...)
 #               endif
                 if (vMatrix)    {
                     struct cha_mesh_instance* mi = &inst->mesh_instances[CHA_MESH_NAME_BODY];
@@ -3780,7 +3778,7 @@ void cha_character_group_updateMatrices(struct cha_character_group** pp,int num_
                     const float* gMatrix = &mi->pose_matrices[CHA_BONE_SPACE_GRABBING][CHA_BONE_NAME_ROOT*16];
                     int use_parent_offset_matrix_link = 0;
 #                   ifdef CHA_DOUBLE_PRECISION
-                    chm_Mat4MulUncheckArgsd(mvMatrixd,vMatrix,inst->mMatrixOut); // doubles
+                    chm_Mat4MulUncheckArgsd(mvMatrixd,vMatrix,mMatrixOut); // doubles
                     // Here we must convert mvMatrixd to float, but we can lose precision...
                     // But we cull out values that exceed the FLT_MAX boundaries (hoping that user frustum is not so long)
                     for (k=0;k<3;k++)   {
@@ -3799,20 +3797,13 @@ void cha_character_group_updateMatrices(struct cha_character_group** pp,int num_
                         continue;
                     }
 #                   else
-                    chm_Mat4MulUncheckArgsf(mvMatrixWithoutRootBoneOut,vMatrix,inst->mMatrixOut); // always floats
+                    chm_Mat4MulUncheckArgsf(mvMatrixWithoutRootBoneOut,vMatrix,mMatrixOut); // always floats
 #                   endif
 
                     mi->pose_bone_mask=0;
                     cha_mesh_instance_update_bone_matrix(mi,0,0);   // updates root bone animation only (if necessary) and modifies mi->pose_bone_mask.
 
-
-//#                   ifdef CHA_ALLOW_ROOT_ONLY_POSE_OPTIMIZATION
                     chm_Mat4MulUncheckArgsf(inst->mvMatrixOut,mvMatrixWithoutRootBoneOut,gMatrix);
-//#                   else
-//                    chm_Mat4MulUncheckArgsf(inst->mvMatrixOut,mi->mvMatrix,gMatrix);
-//#                   endif
-
-                    // in the line below: mvMatrixWithoutRootBoneOut works, but mi->mvMatrix does not work. Why?
                     // There's still a Z offset (b->length) that must be appended here, why?
                     chm_Mat4Translatef(inst->mvMatrixOut,0.f,b->length,0.f);
 

@@ -1131,7 +1131,7 @@ void DrawGL(void)
 #       endif //USE_UNSTABLE_SHADOW_MAPPING_TECHNIQUE
 
         /* 'chm_GetLightViewProjectionMatrix(...)' gives us 'lvpMatrix', so we miss 'vMatrixInverse' */
-        chm_Mat4Mul(vilvpMatrix,vilvpMatrix,vMatrixInverse);   /* with this line we can use inst->mvMatrixOut (instead of inst->mMatrixOut, thst is missing) */
+        chm_Mat4Mul(vilvpMatrix,vilvpMatrix,vMatrixInverse);   /* with this line we can use inst->mvMatrixOut (instead of inst->mMatrixOut, that is missing) */
 
         // Draw to shadow map texture
         glMatrixMode(GL_PROJECTION);glPushMatrix();glLoadIdentity();glMatrixMode(GL_MODELVIEW);        // We'll set the combined light view-projection matrix in GL_MODELVIEW (do you know that it's the same?)
