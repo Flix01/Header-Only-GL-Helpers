@@ -447,7 +447,7 @@ void my_mesh_instance_draw_callback_opengl(const struct cha_mesh_instance* mi,co
             const int indsStart = part->inds_start;
             const int indsCount = part->inds_count;
             const struct cha_material* pMat = &mi->parent_character_instance->materials[part->material_idx];
-            assert(indsCount%3==0);
+            CHA_ASSERT(indsCount%3==0);
 #           ifdef TEAPOT_SHADER_SPECULAR
             Teapot_SetColorAmbientDiffuseAndSpecular(pMat->amb,pMat->dif,pMat->spe);    /* shininess is in pMat->spe[3] */
 #           else
@@ -563,8 +563,8 @@ void CharacterGroupMoveAndAnimate(float totalTimeSeconds,float frameTimeSeconds)
         for (j=1;j<4;j++)   {
             float* m = &mi->pose_matrices[CHA_BONE_SPACE_BONE][j*16];
             struct cha_mesh_instance_pose_data* pose_data = &mi->pose_data[j];
-            chm_Mat4Identity(m);
-            chm_Mat4Rotate(m,amount,0.f,0.f,1.f);
+            chm_Mat4Identityf(m);
+            chm_Mat4Rotatef(m,amount,0.f,0.f,1.f);
             pose_data->rot_dirty = 2;   // 2 means that we have updated 'pose_matrices[CHA_BONE_SPACE_BONE]'; 1 that we have updated 'pose_data' directly
         }
         /*if (CHA_BONE_NAME_LOWERARM_WRIST_L>0)    {
@@ -830,7 +830,7 @@ void DrawGL(void)
         const struct cha_mesh_instance* mi = &mouseSelectedCharacterInstance->mesh_instances[CHA_MESH_NAME_BODY];
         const struct cha_mesh* mesh = mi->mesh;
         float mv[16];
-        chm_Mat4Copyf(mv,mouseSelectedCharacterInstance->mvMatrixRootBoneOut);
+        chm_Mat4Copyf(mv,mouseSelectedCharacterInstance->mvMatrixOut);
 #       ifdef TEAPOT_CENTER_MESHES_ON_FLOOR
         chm_Mat4Translatef(mv,0.f,-mesh->aabb_half_extents[1],0.f);
 #       endif

@@ -1332,7 +1332,7 @@ void DrawGeometry(int isShadowPass) {
         if (inst->active && !inst->culled)  {
             // Here we just draw the aabb around the character
             float mv[16];
-            chm_Mat4Copyf(mv,inst->mvMatrixRootBoneOut);
+            chm_Mat4Copyf(mv,inst->mvMatrixOut);
             // Now 'mv' is in the origin of 'mesh->aabb_min/mesh->aabb_max'
 
             glPushMatrix();

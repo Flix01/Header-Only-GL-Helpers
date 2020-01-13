@@ -43,11 +43,11 @@ Code should be in ANSI C (-std=c89) with some notable exceptions:
 So, to be strict, we should compile the code using -std=c99, but I prefer using -std=gnu89, that allows them.
 Also, older versions of MSVC seem to work correctly out of the box with /DCHA_NO_C99_MATH
 (even if they're not fully C99 compliant, and/or you can't specify the C dialect to use).
-
+*/
+/*
 ===================
 BASIC USAGE:
 ===================
-/*
 // Suppose you already have an OpenGL application (that supports the fixed-function-pipeline) working
 // Make the following changes, and if everything goes well, you should see something on screen...
 // (This is a cut-down version of 'test_character_standalone.c'.
@@ -98,7 +98,6 @@ void DrawGL(void)   {
 
 // That's all! Easy? Yes.
 */
-
 /*
 ===================
 A POSSIBLE ROADMAP:
@@ -108,10 +107,9 @@ A POSSIBLE ROADMAP:
 -> Decide if we need to merge 'character_inl.h' or not.
 -> Should we elaborate some higher-level animation API or not? And how? (I've never used programs like Unity 3D and Unreal Engine, so I don't know what kind of API is better for the user).
 -> Add other animations.
--> Add other animation 'tools' (for example to play them backwards, or to mirror them in the X direction).
+-> Add other animation 'tools' (for example to play actions backwards, or to mirror them in the X direction).
 
 -> Remove all unnecessary chm_ math functions to slim file size a bit.
--> Add dependency to <float.h> for FLT_MAX (currently I hard code it, but better be on the safe side).
 -> CHA_HINT_VERTEX_ATTRIBUTE_LOCATION and CHA_HINT_NORMAL_ATTRIBUTE_LOCATION are const... Must we set them at runtime?
 */
 
@@ -2355,6 +2353,7 @@ void cha_armature_add_actions(struct cha_armature* p,int num_actions,const char*
     }
 }
 void cha_armature_display(struct cha_armature* p) {
+#   ifndef CHA_NO_STDIO
     int i,j;
     CHA_ASSERT(strlen(p->name)>0);
     printf("\t%d) name: \"%s\"\tnum_bones=%d\n",p->idx,p->name,p->num_bones);
@@ -2425,6 +2424,7 @@ void cha_armature_display(struct cha_armature* p) {
         }
 
     }
+#endif
 }
 
 struct cha_mesh_part {
@@ -2554,6 +2554,7 @@ void cha_mesh_destroy(struct cha_mesh* p) {
 #   endif
 }
 void cha_mesh_display(struct cha_mesh* p) {
+#   ifndef CHA_NO_STDIO
     int i,j;
     printf("\t%d)\"%s\": num_verts=%d (aabb_center={%1.3ff,%1.3ff,%1.3ff};aabb_half_extents={%1.3ff,%1.3ff,%1.3ff};)\n",p->idx,p->name,p->num_verts,p->aabb_center[0],p->aabb_center[1],p->aabb_center[2],p->aabb_half_extents[0],p->aabb_half_extents[1],p->aabb_half_extents[2]);
     if (p->num_shape_keys)   {
@@ -2597,6 +2598,7 @@ void cha_mesh_display(struct cha_mesh* p) {
         }
         printf("};\n");
     }
+#endif
 }
 void cha_mesh_init(struct cha_mesh* p,const char* name,int mesh_idx,const float* verts,int num_verts,const unsigned short* inds,int num_inds) {
     size_t len;
@@ -2873,10 +2875,12 @@ void cha_material_init(struct cha_material* p,const float amb[4],const float dif
     memcpy(p->spe,spe,3*sizeof(float));p->shi = shi;
 }
 void cha_material_display(const struct cha_material* p) {
+#   ifndef CHA_NO_STDIO
     CHA_ASSERT(p);
     printf("amb[4] = {%1.4f,%1.4f,%1.4f,%1.4f};\n",p->amb[0],p->amb[1],p->amb[2],p->amb[3]);
     printf("dif[4] = {%1.4f,%1.4f,%1.4f,%1.4f};\n",p->dif[0],p->dif[1],p->dif[2],p->dif[3]);
     printf("spe[3] = {%1.4f,%1.4f,%1.4f}, shi = %1.4f;\n",p->spe[0],p->spe[1],p->spe[2],p->shi);
+#   endif
 }
 
 #include "character_inl.h"
@@ -3654,8 +3658,8 @@ struct cha_character_instance {
     choat mMatrixIn[16];      // yours    ->  write-only
 #   endif
     choat mMatrixOut[16];  // mMatrixOut = mMatrixIn + scaling + rotation(.blend2gl)  -> read-only
-    float mvMatrixOut[16]; // mvMatrixOut = vMatrix * mMatrixOut (always float) -> read-only
-    float mvMatrixRootBoneOut[16];  // an mvMatrixOut that takes armature root bone animation into account (mesh_instances[0].mesh->aabbMin/Max)
+    //float mvMatrixWithoutRootBoneOutOut[16]; // mvMatrixWithoutRootBoneOutOut = vMatrix * mMatrixOut (always float) -> read-only
+    float mvMatrixOut[16];  // a vMatrix*mMatrixOut (always float) that takes armature root bone animation into account (mesh_instances[0].mesh->aabbMin/Max)
     float scaling[3];         // read/write
     int active;            // yours (it excludes the instance when 0)
     int culled;            // read-only
@@ -3676,7 +3680,7 @@ void cha_character_instance_init(struct cha_character_instance* p,const char* na
     p->group_idx = -1; p->parent_group = NULL;
     p->active = 1;
     if (p->mMatrixIn) memcpy(p->mMatrixIn,id,16*sizeof(float));
-    memcpy(p->mvMatrixOut,id,16*sizeof(float));
+    //memcpy(p->mvMatrixWithoutRootBoneOutOut,id,16*sizeof(float));
     p->scaling[0]=p->scaling[1]=p->scaling[2]=1.f;
     p->num_materials = CHA_MATERIAL_NAME_COUNT;
     p->materials = (struct cha_material*) cha_malloc(p->num_materials*sizeof(struct cha_material));
@@ -3749,6 +3753,7 @@ struct cha_character_group {
 void cha_character_group_updateMatrices(struct cha_character_group** pp,int num_group_pointers,const choat* CHA_RESTRICT vMatrix,const float pMatrixNormalizedFrustumPlanesOrNull[6][4])  {
     /* inst->mMatrixOut = inst->mMatrixIn + scaling + rotation(.blend2gl);  -> read-only */
     int gi,i,k,l;choat tm[16]={1,0,0,0,  0,0,-1,0,   0,1,0,0,    0,0,0,1};
+    float mvMatrixWithoutRootBoneOut[16];
 #   ifdef CHA_DEBUG_FRUSTUM_CULLING
     int num_culled_instances[CHA_MESH_NAME_COUNT+1]=CHA_ZERO_INIT;
     static int num_culled_instances_last[CHA_MESH_NAME_COUNT+1]=CHA_ZERO_INIT;
@@ -3788,13 +3793,13 @@ void cha_character_group_updateMatrices(struct cha_character_group** pp,int num_
                         const double limit = (double)CHA_FLT_MAX - (double)(mesh->aabb_half_extents[aabb_idx_map[k]]*inst->scaling[k])*2.0;    // the map is because: aabb_half_extents[1] is Z and aabb_half_extents[2] is Y
                         if (val>limit || val<-limit)    {inst->culled=mi->culled=1;break;}
                     }
-                    chm_Mat4Convertd2f(inst->mvMatrixOut,mvMatrixd);    // well here we lose all the precision
+                    chm_Mat4Convertd2f(mvMatrixWithoutRootBoneOut,mvMatrixd);    // well here we lose all the precision
                     if (inst->culled)   {
-                        chm_Mat4Copyf(inst->mvMatrixRootBoneOut,inst->mvMatrixOut);  // wrong, but better than nothing
+                        chm_Mat4Copyf(inst->mvMatrixOut,mvMatrixWithoutRootBoneOut);  // wrong, but better than nothing
                         continue;
                     }
 #                   else
-                    chm_Mat4MulUncheckArgsf(inst->mvMatrixOut,vMatrix,inst->mMatrixOut); // always floats
+                    chm_Mat4MulUncheckArgsf(mvMatrixWithoutRootBoneOut,vMatrix,inst->mMatrixOut); // always floats
 #                   endif
 
                     mi->pose_bone_mask=0;
@@ -3802,17 +3807,17 @@ void cha_character_group_updateMatrices(struct cha_character_group** pp,int num_
 
 
 //#                   ifdef CHA_ALLOW_ROOT_ONLY_POSE_OPTIMIZATION
-                    chm_Mat4MulUncheckArgsf(inst->mvMatrixRootBoneOut,inst->mvMatrixOut,gMatrix);
+                    chm_Mat4MulUncheckArgsf(inst->mvMatrixOut,mvMatrixWithoutRootBoneOut,gMatrix);
 //#                   else
-//                    chm_Mat4MulUncheckArgsf(inst->mvMatrixRootBoneOut,mi->mvMatrix,gMatrix);
+//                    chm_Mat4MulUncheckArgsf(inst->mvMatrixOut,mi->mvMatrix,gMatrix);
 //#                   endif
 
-                    // in the line below: inst->mvMatrixOut works, but mi->mvMatrix does not work. Why?
+                    // in the line below: mvMatrixWithoutRootBoneOut works, but mi->mvMatrix does not work. Why?
                     // There's still a Z offset (b->length) that must be appended here, why?
-                    chm_Mat4Translatef(inst->mvMatrixRootBoneOut,0.f,b->length,0.f);
+                    chm_Mat4Translatef(inst->mvMatrixOut,0.f,b->length,0.f);
 
                     if (pMatrixNormalizedFrustumPlanesOrNull)   {
-                        inst->culled = mi->culled = chm_IsOBBVisiblef(pMatrixNormalizedFrustumPlanesOrNull,inst->mvMatrixRootBoneOut,mesh->aabb_min[0],mesh->aabb_min[1],mesh->aabb_min[2],mesh->aabb_max[0],mesh->aabb_max[1],mesh->aabb_max[2]) ? 0 : 1;
+                        inst->culled = mi->culled = chm_IsOBBVisiblef(pMatrixNormalizedFrustumPlanesOrNull,inst->mvMatrixOut,mesh->aabb_min[0],mesh->aabb_min[1],mesh->aabb_min[2],mesh->aabb_max[0],mesh->aabb_max[1],mesh->aabb_max[2]) ? 0 : 1;
                         if (inst->culled) {
 #                            ifdef CHA_DEBUG_FRUSTUM_CULLING
                             ++num_culled_instances[0];
@@ -3840,10 +3845,10 @@ void cha_character_group_updateMatrices(struct cha_character_group** pp,int num_
                             else memcpy(mv,pmi->mvMatrix,16*sizeof(float)); /* Warning: 'mesh_name_mask_to_exclude' could exclude calculation of parent 'pmi->offset_transform' before this line */
                             chm_Mat4Mulf(mv,mv,use_parent_offset_matrix_link ? mesh->parent_offset_matrix_link : mesh->parent_offset_matrix);
                         }
-                        else memcpy(mv,inst->mvMatrixOut,16*sizeof(float));
+                        else memcpy(mv,mvMatrixWithoutRootBoneOut,16*sizeof(float));
 #                       ifdef CHA_ALLOW_ROOT_ONLY_POSE_OPTIMIZATION
                         if (mi->armature && mi->pose_bone_mask==CHA_BONE_MASK_ROOT) {
-                            chm_Mat4Mulf(mv,mv,&mi->pose_matrices[CHA_BONE_SPACE_GRABBING][16*CHA_BONE_NAME_ROOT]);  // Basically the same as inst->mvMatrixRootBoneOut, but without the bone length translation
+                            chm_Mat4Mulf(mv,mv,&mi->pose_matrices[CHA_BONE_SPACE_GRABBING][16*CHA_BONE_NAME_ROOT]);  // Basically the same as inst->mvMatrixOut, but without the bone length translation
                         }
 #                       endif
                         //--------------------------------------------------------------------                        
@@ -3879,8 +3884,10 @@ void cha_character_group_updateMatrices(struct cha_character_group** pp,int num_
         }
     }
 #   ifdef CHA_DEBUG_FRUSTUM_CULLING
+#   ifndef CHA_NO_STDIO
     if (num_culled_instances[0]!=num_culled_instances_last[0])    {fprintf(stderr,"num_culled_instances = %d;\n",num_culled_instances[0]);num_culled_instances_last[0]=num_culled_instances[0];}
     for (i=1;i<CHA_MESH_NAME_COUNT+1;i++)   {if (num_culled_instances[i]!=num_culled_instances_last[i])    {fprintf(stderr,"num_culled_meshes[\"%s\"] = %d;\n",gCharacterMeshes[i-1].name,num_culled_instances[i]);num_culled_instances_last[i]=num_culled_instances[i];}}
+#   endif
 #   endif
 }
 void cha_character_group_draw(struct cha_character_group*const* pp,int num_group_pointers,int no_materials/*=0*/,int mesh_name_mask_to_exclude/*=0*/,void (*mesh_instance_draw_callback)(const struct cha_mesh_instance* mi,const float* mvMatrix16,int no_materials/*=0*/,void* user_data/*=NULL*/),void* user_data) {
@@ -3912,7 +3919,7 @@ struct cha_character_instance* cha_character_group_GetInstanceUnderMouseFromRayf
             struct cha_character_instance* inst = &p->instances[i];
             const struct cha_mesh_instance* mi = &inst->mesh_instances[CHA_MESH_NAME_BODY];
             const struct cha_mesh* mesh = mi->mesh;
-            const float* obbMatrix = inst->mvMatrixRootBoneOut;
+            const float* obbMatrix = inst->mvMatrixOut;
             float tMin = 0;float tMax = (float)1000000000000;
             int noCollisionDetected = 0;
             float obbPosDelta[3] =  {obbMatrix[12]-rayOrigin3[0],obbMatrix[13]-rayOrigin3[1],obbMatrix[14]-rayOrigin3[2]};
