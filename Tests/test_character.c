@@ -81,7 +81,7 @@ for glut.h, glew.h, etc. with something like:
 #endif //__FREEGLUT_STD_H__
 
 
-#include <stdio.h>
+#include <stdio.h>  // printf
 #include <math.h>
 #include <string.h>
 

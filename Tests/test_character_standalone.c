@@ -835,7 +835,14 @@ void DestroyGL() {
 }
 
 void glDrawBoneCallback(const struct cha_mesh_instance* mi,int bone_idx,const float* mvMatrix16,float length,void* userData)   {
-    (void)mi;(void)bone_idx;
+    //(void)mi;(void)bone_idx;
+    const int is_solid_mode = userData?1:0;
+    const int is_selected = mi->selected_bone_mask&(1<<(unsigned)bone_idx);
+    if (is_selected)    {
+        /* change colors */
+        if (is_solid_mode)  glColor4f(0.4f,0.4f,0.8f,1.f);
+        else                glColor4f(0.2f,0.2f,0.4f,1.f);
+    }
     glPushMatrix();
     glLoadMatrixf(mvMatrix16); /* this will stay single-precision */
     glRotatef(-90.f,1.f,0.f,0.f);
@@ -854,15 +861,21 @@ void glDrawBoneCallback(const struct cha_mesh_instance* mi,int bone_idx,const fl
     glutSolidSphere(length*0.05f,4,4);
     glPopMatrix();
     glPopMatrix();
+    if (is_selected)    {
+        /* reset colors to match the default ones */
+        if (is_solid_mode)  glColor4f(0.8f,0.8f,0.f,1.f);
+        else                glColor4f(0.6f,0.4f,0.f,1.f);
+    }
 }
 void cha_mesh_instance_draw_armature_opengl(const struct cha_mesh_instance* mi)  {
     CHA_ASSERT(mi->armature);
     {
+        const int is_solid_mode = 1;
         glLineWidth(1.f);
         glDepthMask(GL_FALSE);glDisable(GL_DEPTH_TEST);
         //glEnable(GL_BLEND);
         glColor4f(0.8f,0.8f,0.f,1.f);//0.75f);
-        cha_mesh_instance_draw_armature(mi,&glDrawBoneCallback,NULL);
+        cha_mesh_instance_draw_armature(mi,&glDrawBoneCallback,(void*)&is_solid_mode);
         //glDisable(GL_BLEND);
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
         glEnable(GL_POLYGON_OFFSET_LINE);
@@ -1347,6 +1360,39 @@ void DrawGeometry(int isShadowPass) {
                 glColor4f(0.8f,0.8f,0.8f,1.f);
             glPopMatrix();
         }
+
+#       if 0
+        /* test: draw the aabb of a single bone */
+        {
+            const int bone_idx = CHA_BONE_NAME_UPPERARM_LOWERARM_L;
+            const struct cha_armature_bone* b = &mi->armature->bones[bone_idx];
+            const float* bone_matrix = &mi->pose_matrices[CHA_BONE_SPACE_ARMATURE][bone_idx*16];
+            const float aabbMin[3]={-0.1f*b->length,0.f,-0.1f*b->length};
+            const float aabbMax[3]={0.1f*b->length,b->length,0.1f*b->length};
+            float aabbCenter[3],aabbExtents[3];
+            float mv[16];int i;
+            for (i=0;i<3;i++) {
+                aabbExtents[i] = aabbMax[i]-aabbMin[i];
+                aabbCenter[i] = (aabbMax[i]+aabbMin[i])*0.5f;
+            }
+            chm_Mat4Mulf(mv,mi->mvMatrix,bone_matrix);
+            glPushMatrix();
+                // glutWireCube needs the matrix to be placed at 'mesh->aabb_center', so we must translate it
+                // We use glutWireCube(1.f), so we must scale the matrix in the three dimensions with the extents of our aabb
+                chm_Mat4Translatef(mv,aabbCenter[0],aabbCenter[1],aabbCenter[2]);
+                chm_Mat4Scalef(mv,aabbExtents[0],aabbExtents[1],aabbExtents[2]);
+                glMultMatrixf(mv);
+
+                glColor4f(0.5f,0.5f,0.8f,1.f);
+                glDisable(GL_DEPTH_TEST);
+                glLineWidth(10.f);glutWireCube(1.f);
+                glEnable(GL_DEPTH_TEST);
+                glColor4f(0.8f,0.8f,0.8f,1.f);
+            glPopMatrix();
+
+        }
+#       endif
+
     }
 
     glMultMatrix(vMatrix);  /* from now on we use mMatrix instead of mvMatrix */
@@ -1594,16 +1640,30 @@ void GlutMouse(int button,int state,int x,int y) {
     if (button==GLUT_LEFT_BUTTON && state==GLUT_DOWN)   {
         const int viewport[4] = {0,0,(int)current_width,(int)current_height};
         float ray_origin[3],ray_dir[3];
+        static struct cha_character_instance* selected_inst = NULL;
         chm_GetRayFromMouseCoordsf(ray_origin,ray_dir,x,y,pMatrixInverse,viewport);
-        g_character_instance_selected = cha_character_group_GetInstanceUnderMouseFromRayf(&group,1,ray_origin,ray_dir,NULL);
-#       ifdef CHA_CHARACTER_GROUP_INIT_NUM_COLORS   /* dbg only stuff (to see if default colors need to be changed) */
-        if (g_character_instance_selected)  {
-            const int idx = g_character_instance_selected->group_idx;
+        selected_inst = cha_character_group_GetInstanceUnderMouseFromRayf(&group,1,ray_origin,ray_dir,NULL);
+        if (g_character_instance_selected!=selected_inst)  {
+#           ifdef CHA_CHARACTER_GROUP_INIT_NUM_COLORS   /* dbg only stuff (to see if default colors need to be changed) */
+            const int idx = selected_inst->group_idx;
             const int is_man = idx<group->num_men?1:0;
             const int mtl_idx = (is_man ? (idx+(CHA_CHARACTER_GROUP_INIT_NUM_COLORS/2+1)) : (idx-group->num_men))%CHA_CHARACTER_GROUP_INIT_NUM_COLORS;
-            printf("mtl_idx=%d\n",mtl_idx);fflush(stdout);
+            printf("mtl_idx=%d\n",mtl_idx);fflush(stdout);        
+#           endif
+            g_character_instance_selected = selected_inst;
         }
-#       endif
+        else if (g_character_instance_selected) {
+            /* (optional) find bone under mouse */
+            struct cha_mesh_instance* mi = &g_character_instance_selected->mesh_instances[CHA_MESH_NAME_BODY];
+            const int bone_index_under_mouse = cha_mesh_instance_GetBoneUnderMouseFromRayf(mi,ray_origin,ray_dir,NULL);
+            if (bone_index_under_mouse!=CHA_BONE_NAME_COUNT)    {
+                const unsigned bone_mask_under_mouse = 1<<(unsigned)bone_index_under_mouse;
+                const int mods =  glutGetModifiers();
+                if (mods&GLUT_ACTIVE_CTRL) mi->selected_bone_mask^=bone_mask_under_mouse;
+                else mi->selected_bone_mask=bone_mask_under_mouse;
+                printf("bone_index_under_mouse = %d\n",bone_index_under_mouse);fflush(stdout);
+            }
+        }
     }
 }
 
