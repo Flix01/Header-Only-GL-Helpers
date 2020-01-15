@@ -111,13 +111,14 @@ A POSSIBLE ROADMAP:
 
 -> Remove all unnecessary chm_ math functions to slim file size a bit.
 -> CHA_HINT_VERTEX_ATTRIBUTE_LOCATION and CHA_HINT_NORMAL_ATTRIBUTE_LOCATION are const... Must we set them at runtime?
+-> consider if we can remove the CHA_BONE_SPACE_GRABBING and use only CHA_BONE_SPACE_ARMATURE
 */
 
 #ifndef CHARACTER_H_
 #define CHARACTER_H_
 
 #define CHA_VERSION               "0.1 ALPHA"
-#define CHA_VERSION_NUM           0001
+#define CHA_VERSION_NUM           0002
 
 #ifndef CHA_API_INL
 #   define CHA_API_INL __inline
@@ -2426,6 +2427,27 @@ void cha_armature_display(struct cha_armature* p) {
     }
 #endif
 }
+unsigned cha_armature_getBoneSubTreeMask(const struct cha_armature* p,unsigned bone_mask /* bone_mask = 1<<(unsigned)bone_index; */ )  {
+    int i;unsigned mask=bone_mask;
+    CHA_ASSERT(p && p->num_bones==CHA_BONE_NAME_COUNT);
+    for (i=0;i<CHA_BONE_NAME_COUNT;i++)  {
+        const struct cha_armature_bone *b = &p->bones[i];
+        if (b->parent_idx>=0 && mask&(1<<(unsigned)b->parent_idx)) mask|=1<<(unsigned)i;
+    }
+    return mask;
+}
+unsigned cha_armature_getBoneMirrorMask(const struct cha_armature* p,unsigned bone_mask /* bone_mask = 1<<(unsigned)bone_index; */ )  {
+    int i;unsigned mask=0;
+    CHA_ASSERT(p && p->num_bones==CHA_BONE_NAME_COUNT);
+    for (i=0;i<CHA_BONE_NAME_COUNT;i++)  {
+        if (bone_mask&(1<<(unsigned)i)) {
+            const struct cha_armature_bone *b = &p->bones[i];
+            CHA_ASSERT(b->mirror_idx>=0);
+            mask|=1<<(unsigned)b->mirror_idx;
+        }
+    }
+    return mask;
+}
 
 struct cha_mesh_part {
     short material_idx;
@@ -3891,11 +3913,18 @@ void cha_character_group_draw(struct cha_character_group*const* pp,int num_group
         }
     }
 }
-struct cha_character_instance* cha_character_group_GetInstanceUnderMouseFromRayf(struct cha_character_group* const* pp,int num_group_pointers,const float* rayOrigin3,const float* rayDir3,float* CHA_RESTRICT pOptionalDistanceOut) {
-    // rayOrigin3 and rayDirection3 must be in eye space (i.e. camera space: ray must be retrieved using pMatrixInv and NOT pvMatrixInv; infact here we use mvMatrix, NOT mMatrix)
+
+struct cha_character_instance* cha_character_group_GetInstanceUnderMousef(struct cha_character_group* const* pp,int num_group_pointers,int mouseX,int mouseY,const int* viewport4,const float* CHA_RESTRICT pMatrixInv,float* CHA_RESTRICT pOptionalDistanceOut) {
+    float ray_origin3[3] = {0,0,0}; /* eye-space */
+    float ray_dir3[3] = {0,0,-1};   /* eye-space */
     struct cha_character_instance* rv = 0;
     float intersection_distance = 0;
     int gi,i,j;
+#   ifdef CHA_MOUSE_PICKING_OPTIMIZATION /* faster character mouse selection (saves 3 sqrtf per character), but does not work when vMatrix is scaled */
+    const int sc_id_map[3] = {0,2,1};
+#   endif
+    chm_GetRayFromMouseCoordsf(ray_origin3,ray_dir3,mouseX,mouseY,pMatrixInv,viewport4);    /* pMatrixInv -> eye-space (the same as camera-space) */
+
     if (pOptionalDistanceOut) *pOptionalDistanceOut=intersection_distance;
     if (!pp || num_group_pointers<=0) return rv;
 
@@ -3910,24 +3939,30 @@ struct cha_character_instance* cha_character_group_GetInstanceUnderMouseFromRayf
             const float* obbMatrix = inst->mvMatrixOut;
             float tMin = 0;float tMax = (float)CHA_FLT_MAX;
             int noCollisionDetected = 0;
-            float obbPosDelta[3] =  {obbMatrix[12]-rayOrigin3[0],obbMatrix[13]-rayOrigin3[1],obbMatrix[14]-rayOrigin3[2]};
+            float obbPosDelta[3] =  {obbMatrix[12]-ray_origin3[0],obbMatrix[13]-ray_origin3[1],obbMatrix[14]-ray_origin3[2]};
             if (!inst->active || inst->culled) continue;
             for (j=0;j<3;j++)   {
                 if (!noCollisionDetected)   {
                     int j4 = 4*j;
                     // Test intersection with the 2 planes perpendicular to the OBB's j axis
                     float axis[3] = {obbMatrix[j4],obbMatrix[j4+1],obbMatrix[j4+2]},e,f;
-                    float sca = chm_Vec3Dotf(axis,axis);
                     float aabbMinj = mesh->aabb_min[j];
                     float aabbMaxj = mesh->aabb_max[j];
-                    if (sca<(float)0.00009 || sca>(float)1.00001) {
+#                   ifndef CHA_MOUSE_PICKING_OPTIMIZATION
+                    float sca = chm_Vec3Dotf(axis,axis);
+                    if (sca<(float)0.0009 || sca>(float)1.0001) {
                         sca = sqrtf(sca);
                         aabbMinj*=sca;aabbMaxj*=sca;
                         sca=(float)1/sca;axis[0]*=sca;axis[1]*=sca;axis[2]*=sca;
                     }
+#                   else /* does not work when vMatrix is scaled */
+                    float sca = inst->scaling[sc_id_map[j]];
+                    aabbMinj*=sca;aabbMaxj*=sca;
+                    sca=(float)1/sca;axis[0]*=sca;axis[1]*=sca;axis[2]*=sca;
+#                   endif
                     e = chm_Vec3Dotf(axis, obbPosDelta);
-                    f = chm_Vec3Dotf(rayDir3, axis);
-                    //if ( abs(f) > 0.001)  // @Flix: the reference code used this (but it does not work for me; so maybe my selection does not work with a projection ortho matrix...)
+                    f = chm_Vec3Dotf(ray_dir3, axis);
+
                     {
                         // Standard case
                         // t1 and t2 now contain distances betwen ray origin and ray-plane intersections:
@@ -3943,10 +3978,6 @@ struct cha_character_instance* cha_character_group_GetInstanceUnderMouseFromRayf
                         if (tMin > tMax) noCollisionDetected=1;
 
                     }
-                    /*else    {
-                    // Rare case : the ray is almost parallel to the planes, so they don't have any "intersection"
-                    if(-e+aabbMin[j] > 0.0 || -e+aabbMax[j] < 0.0) noCollisionDetected=1;
-                }*/
                 }
             }
 
@@ -3960,73 +3991,62 @@ struct cha_character_instance* cha_character_group_GetInstanceUnderMouseFromRayf
     if (pOptionalDistanceOut) *pOptionalDistanceOut=intersection_distance;
     return rv;
 }
-struct cha_character_instance* cha_character_group_GetInstanceUnderMousef(struct cha_character_group* const* pp,int num_group_pointers,int mouseX,int mouseY,const int* viewport4,const float* CHA_RESTRICT pMatrixInv,float* CHA_RESTRICT pOptionalDistanceOut) {
-    float ray_origin[3] = {0,0,0};
-    float ray_dir[3] = {0,0,-1};
-    chm_GetRayFromMouseCoordsf(ray_origin,ray_dir,mouseX,mouseY,pMatrixInv,viewport4);
-    return cha_character_group_GetInstanceUnderMouseFromRayf(pp,num_group_pointers,ray_origin,ray_dir,pOptionalDistanceOut);
-}
 
-int cha_mesh_instance_GetBoneUnderMouseFromRayf(const struct cha_mesh_instance* p,const float* rayOrigin3,const float* rayDir3,float* CHA_RESTRICT pOptionalDistanceOut) {
-    // rayOrigin3 and rayDirection3 must be in eye space (i.e. camera space: ray must be retrieved using pMatrixInv and NOT pvMatrixInv; infact here we use mvMatrix, NOT mMatrix)
-    float mg[16];
+int cha_mesh_instance_GetBoneUnderMousef(const struct cha_mesh_instance* p,int mouseX,int mouseY,const int* viewport4,const float* CHA_RESTRICT pMatrixInv,float* CHA_RESTRICT pOptionalDistanceOut) {
+    // returns the bone index (i.e. the CHA_BONE_NAME_XXX enum): its mask value is: 1<<(unsigned)bone_index)
+    // or CHA_BONE_NAME_COUNT when there are no bones under the mouse
+    float ray_origin3[3] = {0,0,0};
+    float ray_dir3[3] = {0,0,-1};
+    float mt[16];   // temporary matrix
     int bone_under_mouse = CHA_BONE_NAME_COUNT;
     float intersection_distance = 0;
     int i,j;
-    const int allowed_root_opt =
-#   ifdef CHA_ALLOW_ROOT_ONLY_POSE_OPTIMIZATION
-    1;
-#   else
-    0;
-#   endif
 
     if (pOptionalDistanceOut) *pOptionalDistanceOut=intersection_distance;
     if (!p || p->culled) return bone_under_mouse;
     CHA_ASSERT(p->armature);
+    CHA_ASSERT(p->pose_matrices);
+
+    chm_Mat4InvertTransformMatrixf(mt,p->mvMatrix);
+    chm_Mat4Mulf(mt,mt,pMatrixInv);     // Here: mt = inv(pMatrix*p->mvMatrix); // we have used a matrix property to get it
+    chm_GetRayFromMouseCoordsf(ray_origin3,ray_dir3,mouseX,mouseY,mt,viewport4);    // Now the rays are in the p->mvMatrix space, so we save a 4x4 matrix product per bone
 
     // Loop all meshes and find OBB vs ray intersection
     // Code based on: http://www.opengl-tutorial.org/miscellaneous/clicking-on-objects/picking-with-custom-ray-obb-function/ (WTFPL Public Licence)
     for (i=0;i<p->armature->num_bones;i++)   {
         const struct cha_armature_bone* b = &p->armature->bones[i];
-        const float* obbMatrix = mg;
         float tMin = 0;float tMax = (float)CHA_FLT_MAX;
         int noCollisionDetected = 0;
         float obbPosDelta[3];
         const float length = b->length;
         const float length_halfside = 0.1f*length;
         const float aabb_min[3] = {-length_halfside,0.f,-length_halfside},aabb_max[3]={length_halfside,length,length_halfside};
+        const float* obbMatrix = &p->pose_matrices[CHA_BONE_SPACE_ARMATURE][i*16];
 
-        const float* gMatrix = &p->pose_matrices[CHA_BONE_SPACE_ARMATURE][i*16];
-        if (p->pose_matrices
-                && (!allowed_root_opt || (!(p->pose_bone_mask==CHA_BONE_MASK_ROOT && i==0)))
-                ) {
-            chm_Mat4MulUncheckArgsf(mg,p->mvMatrix,gMatrix);
+#       ifdef CHA_ALLOW_ROOT_ONLY_POSE_OPTIMIZATION
+        if (p->pose_bone_mask==CHA_BONE_MASK_ROOT && i==0)  {
+            chm_Mat4Identityf(mt);chm_Mat4Rotatef(mt,90.f,1,0,0);   // (possible opt) two constant operations here: mt is constant and could be pre-calculated
+            obbMatrix=mt;
         }
-        else {
-#           ifdef CHA_ALLOW_ROOT_ONLY_POSE_OPTIMIZATION
-            chm_Mat4Copyf(mg,p->mvMatrix);
-            chm_Mat4Rotatef(mg,90.f,1,0,0);
-#           else
-            chm_Mat4MulUncheckArgsf(mg,p->mvMatrix,gMatrix);
-#           endif
-        }
+#       endif
 
-        for (j=0;j<3;j++)   obbPosDelta[j] = obbMatrix[12+j]-rayOrigin3[j];
+        for (j=0;j<3;j++)   obbPosDelta[j] = obbMatrix[12+j]-ray_origin3[j];
         for (j=0;j<3;j++)   {
             if (!noCollisionDetected)   {
                 int j4 = 4*j;
                 // Test intersection with the 2 planes perpendicular to the OBB's j axis
                 float axis[3] = {obbMatrix[j4],obbMatrix[j4+1],obbMatrix[j4+2]},e,f;
-                float sca = chm_Vec3Dotf(axis,axis);
                 float aabbMinj = aabb_min[j];
                 float aabbMaxj = aabb_max[j];
-                if (sca<(float)0.00009 || sca>(float)1.00001) {
+                float sca = chm_Vec3Dotf(axis,axis);
+                if (sca<(float)0.0009 || sca>(float)1.0001) {
+                    // This never happens because we use the p->mvMatrix space for rays AFAIK (but better keep the branch for robustness and float-precision issues)
                     sca = sqrtf(sca);
                     aabbMinj*=sca;aabbMaxj*=sca;
                     sca=(float)1/sca;axis[0]*=sca;axis[1]*=sca;axis[2]*=sca;
                 }
                 e = chm_Vec3Dotf(axis, obbPosDelta);
-                f = chm_Vec3Dotf(rayDir3, axis);
+                f = chm_Vec3Dotf(ray_dir3, axis);
                 {
                     // Standard case
                     // t1 and t2 now contain distances betwen ray origin and ray-plane intersections:
@@ -4053,12 +4073,7 @@ int cha_mesh_instance_GetBoneUnderMouseFromRayf(const struct cha_mesh_instance* 
 
     if (pOptionalDistanceOut) *pOptionalDistanceOut=intersection_distance;
     return bone_under_mouse;
-}
-int cha_mesh_instance_GetBoneUnderMousef(const struct cha_mesh_instance* p,int mouseX,int mouseY,const int* viewport4,const float* CHA_RESTRICT pMatrixInv,float* CHA_RESTRICT pOptionalDistanceOut) {
-    float ray_origin[3] = {0,0,0};
-    float ray_dir[3] = {0,0,-1};
-    chm_GetRayFromMouseCoordsf(ray_origin,ray_dir,mouseX,mouseY,pMatrixInv,viewport4);
-    return cha_mesh_instance_GetBoneUnderMouseFromRayf(p,ray_origin,ray_dir,pOptionalDistanceOut);
+
 }
 
 

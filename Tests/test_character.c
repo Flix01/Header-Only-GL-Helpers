@@ -296,9 +296,6 @@ void InitGL(void) {
     // IMPORTANT CALL--------------------------------------------------------
     Dynamic_Resolution_Init(config.dynamic_resolution_target_fps,config.dynamic_resolution_enabled);
     //-----------------------------------------------------------------------
-#   ifdef TEST_ADD_USER_MESH
-    Teapot_Set_Init_UserMeshCallback(&Teapot_Init_User_Mesh_Callback);  // if used must be called BEFORE Teapot_Init()
-#   endif
     // IMPORTANT CALL--------------------------------------------------------
     Teapot_Init();
     //-----------------------------------------------------------------------
@@ -306,6 +303,10 @@ void InitGL(void) {
     Character_Init();
     group = Character_CreateGroup(3,3,1.85f,1.75f);
     //-----------------------------------------------------------------------
+    // (don't copy this)
+    CHA_ASSERT(group && group->num_men>0 && group->num_ladies>0);   // they are used in the demo
+    CHA_ASSERT(CHA_CHARACTER_INSTANCE_LADY_NAME_MARY==0);
+    group->ladies[CHA_CHARACTER_INSTANCE_LADY_NAME_MARY].mesh_instances[CHA_MESH_NAME_BODY].selected_bone_mask = CHA_BONE_MASK_SPINE;   // we'll use it in the manual animation later
 
 
     // These are important, but often overlooked OpenGL calls
@@ -403,6 +404,10 @@ void DestroyGL() {
     Teapot_Destroy();
     Dynamic_Resolution_Destroy();
     //-----------------------------------------------------------------------
+
+    // don't forget to reset pointers (mandatory if we switch from/to fullscreen)
+    pMouseSelectedMeshData = NULL;
+    mouseSelectedCharacterInstance = NULL;
 }
 
 
@@ -490,25 +495,41 @@ void additionalObjectsShadowPassDraw(void* userData)  {
 }
 /* Of course drawing the character armature could be entirely skipped... */
 void glDrawBoneCallback(const struct cha_mesh_instance* mi,int bone_idx,const float* mvMatrix16,float length,void* userData) {
-    (void)userData;(void)mi;(void)bone_idx;
+    const int is_solid_mode = userData?1:0;
+    const int is_selected = (mi->selected_bone_mask&(1<<(unsigned)bone_idx))?1:0;
+    const int was_selected_last_drawn_bone = bone_idx>0 ? ((mi->selected_bone_mask&(1<<(unsigned)(bone_idx-1)))?1:0) : -1;
+    if (is_selected!=was_selected_last_drawn_bone)  {
+        // we need to change colors
+        if (is_selected)    {
+            // selected colors here
+            if (is_solid_mode)  Teapot_SetColorAmbient(0.4f,0.4f,0.8f);//0.75f);
+            else                Teapot_SetColorAmbient(0.2f,0.2f,0.4f);
+        }
+        else {
+            // unselected colors here
+            if (is_solid_mode)  Teapot_SetColorAmbient(0.8f,0.8f,0.f);//0.75f);
+            else                Teapot_SetColorAmbient(0.6f,0.4f,0.f);
+        }
+    }
 #   ifndef TEAPOT_USE_DOUBLE_PRECISION
     Teapot_Helper_DrawArmatureBone_Mv(mvMatrix16,length);
 #   else
+    {
     tpoat tmp[16];chm_Mat4Convertf2d(tmp,mvMatrix16);
     Teapot_Helper_DrawArmatureBone_Mv(tmp,length);
+    }
 #   endif
 }
 void cha_mesh_instance_draw_armature_opengl(const struct cha_mesh_instance* mi)  {
     CHA_ASSERT(mi->armature);
     glLineWidth(1.f);
     {
+        const int is_solid_mode = 1;
         Teapot_LowLevel_StartDisablingLighting();
         glDepthMask(GL_FALSE);glDisable(GL_DEPTH_TEST);
-        Teapot_SetColorAmbient(0.8f,0.8f,0.f);//0.75f);
-        cha_mesh_instance_draw_armature(mi,&glDrawBoneCallback,NULL);
+        cha_mesh_instance_draw_armature(mi,&glDrawBoneCallback,(void*)&is_solid_mode);
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
         glEnable(GL_POLYGON_OFFSET_LINE);
-        Teapot_SetColorAmbient(0.6f,0.4f,0.f);
         cha_mesh_instance_draw_armature(mi,&glDrawBoneCallback,NULL);
         glDisable(GL_POLYGON_OFFSET_LINE);
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
@@ -560,12 +581,16 @@ void CharacterGroupMoveAndAnimate(float totalTimeSeconds,float frameTimeSeconds)
     {   // TEST: manual animating some bones
         struct cha_mesh_instance* mi = mary_mi;
         const float amount = 20.f*sinf(totalTimeSeconds*2.f);int j;
-        for (j=1;j<4;j++)   {
+        for (j=0;j<CHA_BONE_NAME_COUNT;j++)   {
+            // in InitGL() we set the initial value of 'mi->selected_bone_mask',
+            // so that, when user (de)selects bones, the manual animation changes
+            if (mi->selected_bone_mask&(1<<(unsigned)j))    {
             float* m = &mi->pose_matrices[CHA_BONE_SPACE_BONE][j*16];
             struct cha_mesh_instance_pose_data* pose_data = &mi->pose_data[j];
             chm_Mat4Identityf(m);
             chm_Mat4Rotatef(m,amount,0.f,0.f,1.f);
-            pose_data->rot_dirty = 2;   // 2 means that we have updated 'pose_matrices[CHA_BONE_SPACE_BONE]'; 1 that we have updated 'pose_data' directly
+            pose_data->rot_dirty = 2;   // 2 means that we have updated 'pose_matrices[CHA_BONE_SPACE_BONE]'; 1 that we have updated 'pose_data' directly        
+            }
         }
         /*if (CHA_BONE_NAME_LOWERARM_WRIST_L>0)    {
             float* m = &mi->pose_matrices[CHA_BONE_SPACE_BONE][CHA_BONE_NAME_LOWERARM_WRIST_L*16];
@@ -1153,24 +1178,41 @@ void GlutSpecialKeys(int key,int x,int y)
 }
 
 void GlutMouse(int button,int state,int x,int y) {
-    const int viewport[4] = {0,0,current_width,current_height};
+    const int mods =  glutGetModifiers();
     if (button==GLUT_LEFT_BUTTON && state==GLUT_DOWN)   {
+        const int viewport[4] = {0,0,current_width,current_height};
         choat distanceMesh = 0.0;float distanceChar = 0.f;
+        struct cha_character_instance* selected_inst = NULL;
         pMouseSelectedMeshData = Teapot_MeshData_GetMeshUnderMouse(pMeshData,numMeshData,x,y,viewport,&distanceMesh);
-        mouseSelectedCharacterInstance = cha_character_group_GetInstanceUnderMousef(&group,1,x,y,viewport,pMatrixInv,&distanceChar);
-        if (mouseSelectedCharacterInstance && pMouseSelectedMeshData) {
+        selected_inst = cha_character_group_GetInstanceUnderMousef(&group,1,x,y,viewport,pMatrixInv,&distanceChar);
+        if (selected_inst && pMouseSelectedMeshData) {
             if (distanceChar<=distanceMesh) pMouseSelectedMeshData=NULL;
-            else mouseSelectedCharacterInstance=NULL;
+            else selected_inst=NULL;
         }
-#       ifdef CHA_CHARACTER_GROUP_INIT_NUM_COLORS   /* dbg only stuff (to see if default colors need to be changed) */
-        if (mouseSelectedCharacterInstance)  {
-            const int idx = mouseSelectedCharacterInstance->group_idx;
-            const int is_man = idx<group->num_men?1:0;
-            const int mtl_idx = (is_man ? (idx+(CHA_CHARACTER_GROUP_INIT_NUM_COLORS/2+1)) : (idx-group->num_men))%CHA_CHARACTER_GROUP_INIT_NUM_COLORS;
-            printf("mtl_idx=%d\n",mtl_idx);fflush(stdout);
+        if (!selected_inst) {mouseSelectedCharacterInstance=selected_inst;}
+        else    {
+            if (mouseSelectedCharacterInstance!=selected_inst)  {
+#               ifdef CHA_CHARACTER_GROUP_INIT_NUM_COLORS   /* dbg only stuff (to see if default colors need to be changed) */
+                const int idx = selected_inst->group_idx;
+                const int is_man = idx<group->num_men?1:0;
+                const int mtl_idx = (is_man ? (idx+(CHA_CHARACTER_GROUP_INIT_NUM_COLORS/2+1)) : (idx-group->num_men))%CHA_CHARACTER_GROUP_INIT_NUM_COLORS;
+                printf("mtl_idx=%d\n",mtl_idx);fflush(stdout);
+#               endif
+                mouseSelectedCharacterInstance=selected_inst;
+            }
+            else if (mouseSelectedCharacterInstance) {
+                /* (optional) find bone under mouse */
+                struct cha_mesh_instance* mi = &mouseSelectedCharacterInstance->mesh_instances[CHA_MESH_NAME_BODY];
+                const int bone_index_under_mouse = cha_mesh_instance_GetBoneUnderMousef(mi,x,y,viewport,pMatrixInv,NULL);
+                if (bone_index_under_mouse!=CHA_BONE_NAME_COUNT)    {
+                    unsigned bone_mask_under_mouse = 1<<(unsigned)bone_index_under_mouse;
+                    if (mods&GLUT_ACTIVE_SHIFT) bone_mask_under_mouse = cha_armature_getBoneSubTreeMask(mi->armature,bone_mask_under_mouse);
+                    if (mods&GLUT_ACTIVE_CTRL) mi->selected_bone_mask^=bone_mask_under_mouse;
+                    else mi->selected_bone_mask=bone_mask_under_mouse;
+                    //printf("bone_index_under_mouse = %d\n",bone_index_under_mouse);fflush(stdout);
+                }
+            }
         }
-#       endif
-
     }
 }
 
@@ -1284,10 +1326,11 @@ int main(int argc, char** argv)
     printf("F1:\t\t\ttoggle dynamic resolution on/off\n");
     printf("F2:\t\t\tdisplay FPS\n");
     printf("LMB:\t\t\tselect a character (displaying its aabb and its armature)\n");
+    printf("LMB(+-CTRL,SHIFT):\t(de)select bones in a selected character (displaying them in a different color)\n");
 #	ifndef __EMSCRIPTEN__
     printf("CTRL+RETURN:\t\ttoggle fullscreen on/off (if supported)\n");
 #	endif //__EMSCRIPTEN__
-    printf("\n");
+    printf("\n");fflush(stdout);
 
     resetCamera();  // Mandatory
     resetLight();   // Mandatory
