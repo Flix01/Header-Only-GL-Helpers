@@ -836,23 +836,7 @@ void DestroyGL() {
 }
 
 void glDrawBoneCallback(const struct cha_mesh_instance* mi,int bone_idx,const float* mvMatrix16,float length,void* userData)   {
-    const int is_solid_mode = userData?1:0;
-    const int is_selected = (mi->selected_bone_mask&(1<<(unsigned)bone_idx))?1:0;
-    const int was_selected_last_drawn_bone = bone_idx>0 ? ((mi->selected_bone_mask&(1<<(unsigned)(bone_idx-1)))?1:0) : -1;
-    if (is_selected!=was_selected_last_drawn_bone)  {
-        // we need to change colors
-        if (is_selected)    {
-            // selected colors here
-            if (is_solid_mode)  glColor4f(0.4f,0.4f,0.8f,1.f);
-            else                glColor4f(0.2f,0.2f,0.4f,1.f);
-        }
-        else {
-            // unselected colors here
-            if (is_solid_mode)  glColor4f(0.8f,0.8f,0.f,1.f);
-            else                glColor4f(0.6f,0.4f,0.f,1.f);
-        }
-    }
-
+    (void)mi;(void)bone_idx;(void)userData;
     // we draw the bone (using display lists here would speed up things a lot)
     glPushMatrix();
     glLoadMatrixf(mvMatrix16); /* this will stay single-precision */
@@ -877,15 +861,31 @@ void glDrawBoneCallback(const struct cha_mesh_instance* mi,int bone_idx,const fl
 void cha_mesh_instance_draw_armature_opengl(const struct cha_mesh_instance* mi)  {
     CHA_ASSERT(mi->armature);
     {
-        const int is_solid_mode = 1;
+        const unsigned deselected_mask = CHA_BONE_MASK_ALL&(~mi->selected_bone_mask);
+        const unsigned   selected_mask = mi->selected_bone_mask;
         glLineWidth(1.f);
         glDepthMask(GL_FALSE);glDisable(GL_DEPTH_TEST);
         //glEnable(GL_BLEND);
-        cha_mesh_instance_draw_armature(mi,&glDrawBoneCallback,(void*)&is_solid_mode);
+        if (deselected_mask) {
+            glColor4f(0.8f,0.8f,0.f,1.f);
+            cha_mesh_instance_draw_armature(mi,deselected_mask,&glDrawBoneCallback,NULL);
+        }
+        if (  selected_mask) {
+            glColor4f(0.4f,0.4f,0.8f,1.f);
+            cha_mesh_instance_draw_armature(mi,  selected_mask,&glDrawBoneCallback,NULL);
+        }
+        cha_mesh_instance_draw_armature(mi,  selected_mask,&glDrawBoneCallback,NULL);
         //glDisable(GL_BLEND);
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
         glEnable(GL_POLYGON_OFFSET_LINE);
-        cha_mesh_instance_draw_armature(mi,&glDrawBoneCallback,NULL);
+        if (deselected_mask) {
+            glColor4f(0.6f,0.4f,0.f,1.f);
+            cha_mesh_instance_draw_armature(mi,deselected_mask,&glDrawBoneCallback,NULL);
+        }
+        if (  selected_mask) {
+            glColor4f(0.2f,0.2f,0.4f,1.f);
+            cha_mesh_instance_draw_armature(mi,  selected_mask,&glDrawBoneCallback,NULL);
+        }
         glDisable(GL_POLYGON_OFFSET_LINE);
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         glColor4f(0.8f,0.8f,0.8f,1.f);
@@ -1663,7 +1663,7 @@ void GlutMouse(int button,int state,int x,int y) {
                 struct cha_mesh_instance* mi = &g_character_instance_selected->mesh_instances[CHA_MESH_NAME_BODY];
                 const int bone_index_under_mouse = cha_mesh_instance_GetBoneUnderMousef(mi,x,y,viewport,pMatrixInverse,NULL);
                 if (bone_index_under_mouse!=CHA_BONE_NAME_COUNT)    {
-                    unsigned bone_mask_under_mouse = 1<<(unsigned)bone_index_under_mouse;
+                    unsigned bone_mask_under_mouse = 1U<<bone_index_under_mouse;
                     if (mods&GLUT_ACTIVE_SHIFT) bone_mask_under_mouse = cha_armature_getBoneSubTreeMask(mi->armature,bone_mask_under_mouse);
                     if (mods&GLUT_ACTIVE_CTRL) mi->selected_bone_mask^=bone_mask_under_mouse;
                     else mi->selected_bone_mask=bone_mask_under_mouse;

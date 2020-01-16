@@ -2299,7 +2299,7 @@ void cha_armature_add_actions(struct cha_armature* p,int num_actions,const char*
                 memset(kf_stream->rotation_key_frames,0,kf_stream->num_rotation_key_frames*sizeof(struct cha_armature_action_key_frame));
             }
             if (kf_stream->num_translation_key_frames || kf_stream->num_rotation_key_frames)    {
-                act->bone_mask|=(1<<(unsigned)j);
+                act->bone_mask|=(1U<<j);
             }
         }
     }
@@ -2427,23 +2427,23 @@ void cha_armature_display(struct cha_armature* p) {
     }
 #endif
 }
-unsigned cha_armature_getBoneSubTreeMask(const struct cha_armature* p,unsigned bone_mask /* bone_mask = 1<<(unsigned)bone_index; */ )  {
+unsigned cha_armature_getBoneSubTreeMask(const struct cha_armature* p,unsigned bone_mask /* bone_mask = 1U<<bone_index; */ )  {
     int i;unsigned mask=bone_mask;
     CHA_ASSERT(p && p->num_bones==CHA_BONE_NAME_COUNT);
     for (i=0;i<CHA_BONE_NAME_COUNT;i++)  {
         const struct cha_armature_bone *b = &p->bones[i];
-        if (b->parent_idx>=0 && mask&(1<<(unsigned)b->parent_idx)) mask|=1<<(unsigned)i;
+        if (b->parent_idx>=0 && mask&(1U<<b->parent_idx)) mask|=1U<<i;
     }
     return mask;
 }
-unsigned cha_armature_getBoneMirrorMask(const struct cha_armature* p,unsigned bone_mask /* bone_mask = 1<<(unsigned)bone_index; */ )  {
+unsigned cha_armature_getBoneMirrorMask(const struct cha_armature* p,unsigned bone_mask /* bone_mask = 1U<<bone_index; */ )  {
     int i;unsigned mask=0;
     CHA_ASSERT(p && p->num_bones==CHA_BONE_NAME_COUNT);
     for (i=0;i<CHA_BONE_NAME_COUNT;i++)  {
-        if (bone_mask&(1<<(unsigned)i)) {
+        if (bone_mask&(1U<<i)) {
             const struct cha_armature_bone *b = &p->bones[i];
             CHA_ASSERT(b->mirror_idx>=0);
-            mask|=1<<(unsigned)b->mirror_idx;
+            mask|=1U<<b->mirror_idx;
         }
     }
     return mask;
@@ -3098,7 +3098,7 @@ void cha_mesh_instance_destroy(struct cha_mesh_instance* p)    {
 #   endif
 #   endif
 }
-void cha_mesh_instance_draw_armature(const struct cha_mesh_instance* mi,void (*drawArmatureBoneCallback)(const struct cha_mesh_instance* mi,int bone_idx,const float* mvMatrix16,float length,void* userData),void* userData)  {
+void cha_mesh_instance_draw_armature(const struct cha_mesh_instance* mi,unsigned bone_mask_to_include /*=CHA_BONE_MASK_ALL*/,void (*drawArmatureBoneCallback)(const struct cha_mesh_instance* mi,int bone_idx,const float* mvMatrix16,float length,void* userData),void* userData)  {
     const struct cha_armature* p = mi->armature;
     int i;
 //#   if 1
@@ -3109,27 +3109,27 @@ void cha_mesh_instance_draw_armature(const struct cha_mesh_instance* mi,void (*d
     0;
 #   endif
     float mv[16];
-    if (!p || !drawArmatureBoneCallback) return;
-    CHA_ASSERT(p && drawArmatureBoneCallback);
+    if (!p || !drawArmatureBoneCallback || !(bone_mask_to_include&CHA_BONE_MASK_ALL)) return;
+    CHA_ASSERT(p && drawArmatureBoneCallback && mi->pose_matrices);
 
     for (i=0;i<p->num_bones;i++)    {
-        const struct cha_armature_bone* b = &p->bones[i];
-        const float* gMatrix = &mi->pose_matrices[CHA_BONE_SPACE_ARMATURE][b->idx*16];
+        if (bone_mask_to_include&(1U<<i)) {
+            const struct cha_armature_bone* b = &p->bones[i];
+            const float* gMatrix = &mi->pose_matrices[CHA_BONE_SPACE_ARMATURE][b->idx*16];
 
-        if (mi->pose_matrices
-                && (!allowed_root_opt || (!(mi->pose_bone_mask==CHA_BONE_MASK_ROOT && i==0)))
-                ) {
-            chm_Mat4MulUncheckArgsf(mv,mi->mvMatrix,gMatrix);
-        }
-        else {
+            if (!allowed_root_opt || (!(mi->pose_bone_mask==CHA_BONE_MASK_ROOT && i==0)))   {
+                chm_Mat4MulUncheckArgsf(mv,mi->mvMatrix,gMatrix);
+            }
+            else {
 #           ifdef CHA_ALLOW_ROOT_ONLY_POSE_OPTIMIZATION
-            chm_Mat4Copyf(mv,mi->mvMatrix);    /* Why it's rotated ?*/
-            chm_Mat4Rotatef(mv,90.f,1,0,0);
+                chm_Mat4Copyf(mv,mi->mvMatrix);    /* Why it's rotated ?*/
+                chm_Mat4Rotatef(mv,90.f,1,0,0);
 #           else
-            chm_Mat4MulUncheckArgsf(mv,mi->mvMatrix,gMatrix);
+                chm_Mat4MulUncheckArgsf(mv,mi->mvMatrix,gMatrix);
 #           endif
+            }
+            drawArmatureBoneCallback(mi,i,mv,b->length,userData);
         }
-        drawArmatureBoneCallback(mi,i,mv,b->length,userData);
     }
 /*#else
     if (mi->pose_matrices) {
@@ -3736,7 +3736,7 @@ void cha_character_instance_draw(const struct cha_character_instance* inst,int n
     if (no_materials) mesh_name_mask_to_exclude|=CHA_MESH_MASK_MOUTH_AND_EYE;
     for (mi_idx=0;mi_idx<inst->num_meshes;mi_idx++)    {
         const struct cha_mesh_instance* mi = &inst->mesh_instances[mi_idx];
-        const int mi_idx_mask = (1<<(unsigned)mi_idx);
+        const int mi_idx_mask = (1U<<mi_idx);
         if (!mi->culled
 #               ifndef CHA_CULL_ALL_MESH_INSTANCES_WHEN_NO_MATERIALS_IS_SET
                 || (no_materials && ((mi_idx_mask&(CHA_MESH_MASK_BODY|CHA_MESH_MASK_MOUTH_AND_EYE))==0))  /* this line draws culled HEADs when 'no_materials' is set (avoids headless shadows in some cases) */
@@ -3993,7 +3993,7 @@ struct cha_character_instance* cha_character_group_GetInstanceUnderMousef(struct
 }
 
 int cha_mesh_instance_GetBoneUnderMousef(const struct cha_mesh_instance* p,int mouseX,int mouseY,const int* viewport4,const float* CHA_RESTRICT pMatrixInv,float* CHA_RESTRICT pOptionalDistanceOut) {
-    // returns the bone index (i.e. the CHA_BONE_NAME_XXX enum): its mask value is: 1<<(unsigned)bone_index)
+    // returns the bone index (i.e. the CHA_BONE_NAME_XXX enum): its mask value is: 1U<<bone_index)
     // or CHA_BONE_NAME_COUNT when there are no bones under the mouse
     float ray_origin3[3] = {0,0,0};
     float ray_dir3[3] = {0,0,-1};

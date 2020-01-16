@@ -495,22 +495,7 @@ void additionalObjectsShadowPassDraw(void* userData)  {
 }
 /* Of course drawing the character armature could be entirely skipped... */
 void glDrawBoneCallback(const struct cha_mesh_instance* mi,int bone_idx,const float* mvMatrix16,float length,void* userData) {
-    const int is_solid_mode = userData?1:0;
-    const int is_selected = (mi->selected_bone_mask&(1<<(unsigned)bone_idx))?1:0;
-    const int was_selected_last_drawn_bone = bone_idx>0 ? ((mi->selected_bone_mask&(1<<(unsigned)(bone_idx-1)))?1:0) : -1;
-    if (is_selected!=was_selected_last_drawn_bone)  {
-        // we need to change colors
-        if (is_selected)    {
-            // selected colors here
-            if (is_solid_mode)  Teapot_SetColorAmbient(0.4f,0.4f,0.8f);//0.75f);
-            else                Teapot_SetColorAmbient(0.2f,0.2f,0.4f);
-        }
-        else {
-            // unselected colors here
-            if (is_solid_mode)  Teapot_SetColorAmbient(0.8f,0.8f,0.f);//0.75f);
-            else                Teapot_SetColorAmbient(0.6f,0.4f,0.f);
-        }
-    }
+    (void)mi;(void)bone_idx;(void)userData;
 #   ifndef TEAPOT_USE_DOUBLE_PRECISION
     Teapot_Helper_DrawArmatureBone_Mv(mvMatrix16,length);
 #   else
@@ -524,13 +509,28 @@ void cha_mesh_instance_draw_armature_opengl(const struct cha_mesh_instance* mi) 
     CHA_ASSERT(mi->armature);
     glLineWidth(1.f);
     {
-        const int is_solid_mode = 1;
+        const unsigned deselected_mask = CHA_BONE_MASK_ALL&(~mi->selected_bone_mask);
+        const unsigned   selected_mask = mi->selected_bone_mask;
         Teapot_LowLevel_StartDisablingLighting();
         glDepthMask(GL_FALSE);glDisable(GL_DEPTH_TEST);
-        cha_mesh_instance_draw_armature(mi,&glDrawBoneCallback,(void*)&is_solid_mode);
+        if (deselected_mask) {
+            Teapot_SetColorAmbient(0.8f,0.8f,0.f);//0.75f);
+            cha_mesh_instance_draw_armature(mi,deselected_mask,&glDrawBoneCallback,NULL);
+        }
+        if (  selected_mask) {
+            Teapot_SetColorAmbient(0.4f,0.4f,0.8f);//0.75f);
+            cha_mesh_instance_draw_armature(mi,  selected_mask,&glDrawBoneCallback,NULL);
+        }
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
         glEnable(GL_POLYGON_OFFSET_LINE);
-        cha_mesh_instance_draw_armature(mi,&glDrawBoneCallback,NULL);
+        if (deselected_mask) {
+            Teapot_SetColorAmbient(0.6f,0.4f,0.f);
+            cha_mesh_instance_draw_armature(mi,deselected_mask,&glDrawBoneCallback,NULL);
+        }
+        if (  selected_mask) {
+            Teapot_SetColorAmbient(0.2f,0.2f,0.4f);
+            cha_mesh_instance_draw_armature(mi,  selected_mask,&glDrawBoneCallback,NULL);
+        }
         glDisable(GL_POLYGON_OFFSET_LINE);
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         glEnable(GL_DEPTH_TEST);glDepthMask(GL_TRUE);
@@ -584,7 +584,7 @@ void CharacterGroupMoveAndAnimate(float totalTimeSeconds,float frameTimeSeconds)
         for (j=0;j<CHA_BONE_NAME_COUNT;j++)   {
             // in InitGL() we set the initial value of 'mi->selected_bone_mask',
             // so that, when user (de)selects bones, the manual animation changes
-            if (mi->selected_bone_mask&(1<<(unsigned)j))    {
+            if (mi->selected_bone_mask&(1U<<j))    {
             float* m = &mi->pose_matrices[CHA_BONE_SPACE_BONE][j*16];
             struct cha_mesh_instance_pose_data* pose_data = &mi->pose_data[j];
             chm_Mat4Identityf(m);
@@ -1205,7 +1205,7 @@ void GlutMouse(int button,int state,int x,int y) {
                 struct cha_mesh_instance* mi = &mouseSelectedCharacterInstance->mesh_instances[CHA_MESH_NAME_BODY];
                 const int bone_index_under_mouse = cha_mesh_instance_GetBoneUnderMousef(mi,x,y,viewport,pMatrixInv,NULL);
                 if (bone_index_under_mouse!=CHA_BONE_NAME_COUNT)    {
-                    unsigned bone_mask_under_mouse = 1<<(unsigned)bone_index_under_mouse;
+                    unsigned bone_mask_under_mouse = 1U<<bone_index_under_mouse;
                     if (mods&GLUT_ACTIVE_SHIFT) bone_mask_under_mouse = cha_armature_getBoneSubTreeMask(mi->armature,bone_mask_under_mouse);
                     if (mods&GLUT_ACTIVE_CTRL) mi->selected_bone_mask^=bone_mask_under_mouse;
                     else mi->selected_bone_mask=bone_mask_under_mouse;
