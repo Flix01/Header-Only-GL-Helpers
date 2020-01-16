@@ -385,6 +385,15 @@ void InitGL(void) {
         Teapot_MeshData_SetColor(md,0.3f,0.5f,1.f,1.0f);
         Teapot_MeshData_SetMeshId(md,TEAPOT_MESH_CYLINDER);
 
+        /*// back wall (box)
+        md = pMeshData[i++];
+        mMatrix[12]=0.0;    mMatrix[13]=1.5;    mMatrix[14]=-9.0;
+        Teapot_Helper_RotateMatrix(mMatrix,90,1,0,0);
+        Teapot_MeshData_SetMMatrix(md,mMatrix);
+        Teapot_MeshData_SetScaling(md,1.5f*12.f,0.4f,3.f);
+        Teapot_MeshData_SetColor(md,1.f,1.f,1.f,1.0f);
+        Teapot_MeshData_SetMeshId(md,TEAPOT_MESH_CUBIC_GROUND);
+        Teapot_Helper_IdentityMatrix(mMatrix);*/
 
         numMeshData = i;
         CHA_ASSERT(numMeshData<maxNumMeshData);  // Well, we should check that numMeshData<maxNumMeshData
@@ -509,7 +518,7 @@ void cha_mesh_instance_draw_armature_opengl(const struct cha_mesh_instance* mi) 
     CHA_ASSERT(mi->armature);
     glLineWidth(1.f);
     {
-        const unsigned deselected_mask = CHA_BONE_MASK_ALL&(~mi->selected_bone_mask);
+        const unsigned deselected_mask = CHA_BONE_MASK_INVERSE(mi->selected_bone_mask);
         const unsigned   selected_mask = mi->selected_bone_mask;
         Teapot_LowLevel_StartDisablingLighting();
         glDepthMask(GL_FALSE);glDisable(GL_DEPTH_TEST);

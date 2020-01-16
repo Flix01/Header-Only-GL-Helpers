@@ -2742,56 +2742,76 @@ void cha_mesh_add_shape_keys(struct cha_mesh* p,int num_shape_keys,const char** 
             }
         }
     }
-#   ifdef CHA_USE_VBO
     else    {
-            /* build shape keys vbo and vao */
-            const size_t verts_size_in_bytes = sizeof(float)*3*p->num_verts;
-            CHA_ASSERT(p->shape_keys && p->num_shape_keys>0);
-            for (i=0;i<p->num_shape_keys;i++)   {
-                struct cha_mesh_shape_key* sk = &p->shape_keys[i];
-                CHA_ASSERT(sk->vbo==0);
+#       ifdef CHA_USE_VBO
+        /* build shape keys vbo and vao */
+        const size_t verts_size_in_bytes = sizeof(float)*3*p->num_verts;
+        CHA_ASSERT(p->shape_keys && p->num_shape_keys>0);
+        for (i=0;i<p->num_shape_keys;i++)   {
+            struct cha_mesh_shape_key* sk = &p->shape_keys[i];
+            CHA_ASSERT(sk->vbo==0);
 
-#               ifdef CHA_HINT_USE_VAO
-                glGenVertexArrays(1,&sk->vao);
-                glBindVertexArray(sk->vao);
-                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, p->ibo);
-#               endif
+#           ifdef CHA_HINT_USE_VAO
+            glGenVertexArrays(1,&sk->vao);
+            glBindVertexArray(sk->vao);
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, p->ibo);
+#           endif
 
-                glGenBuffers(1, &sk->vbo);
-                glBindBuffer(GL_ARRAY_BUFFER, sk->vbo);
-                glBufferData(GL_ARRAY_BUFFER, 2*verts_size_in_bytes, NULL, GL_STATIC_DRAW);
-                glBufferSubData(GL_ARRAY_BUFFER, 0, verts_size_in_bytes, sk->verts);
-                glBufferSubData(GL_ARRAY_BUFFER, verts_size_in_bytes, verts_size_in_bytes, sk->norms);
+            glGenBuffers(1, &sk->vbo);
+            glBindBuffer(GL_ARRAY_BUFFER, sk->vbo);
+            glBufferData(GL_ARRAY_BUFFER, 2*verts_size_in_bytes, NULL, GL_STATIC_DRAW);
+            glBufferSubData(GL_ARRAY_BUFFER, 0, verts_size_in_bytes, sk->verts);
+            glBufferSubData(GL_ARRAY_BUFFER, verts_size_in_bytes, verts_size_in_bytes, sk->norms);
 
-#               ifndef CHA_HINT_USE_FFP_VBO
-                glEnableVertexAttribArray(CHA_HINT_VERTEX_ATTRIBUTE_LOCATION);
-                glVertexAttribPointer(CHA_HINT_VERTEX_ATTRIBUTE_LOCATION, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
-                glEnableVertexAttribArray(CHA_HINT_NORMAL_ATTRIBUTE_LOCATION);
-                glVertexAttribPointer(CHA_HINT_NORMAL_ATTRIBUTE_LOCATION, 3, GL_FLOAT, GL_FALSE, 0, (void*)(verts_size_in_bytes));
-#               else
-                glEnableClientState(GL_VERTEX_ARRAY);
-                glVertexPointer(3, GL_FLOAT, 0, (void*)0);
-                glEnableClientState(GL_NORMAL_ARRAY);
-                glNormalPointer(GL_FLOAT, 0, (void*)verts_size_in_bytes);
-#               endif
+#           ifndef CHA_HINT_USE_FFP_VBO
+            glEnableVertexAttribArray(CHA_HINT_VERTEX_ATTRIBUTE_LOCATION);
+            glVertexAttribPointer(CHA_HINT_VERTEX_ATTRIBUTE_LOCATION, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+            glEnableVertexAttribArray(CHA_HINT_NORMAL_ATTRIBUTE_LOCATION);
+            glVertexAttribPointer(CHA_HINT_NORMAL_ATTRIBUTE_LOCATION, 3, GL_FLOAT, GL_FALSE, 0, (void*)(verts_size_in_bytes));
+#           else
+            glEnableClientState(GL_VERTEX_ARRAY);
+            glVertexPointer(3, GL_FLOAT, 0, (void*)0);
+            glEnableClientState(GL_NORMAL_ARRAY);
+            glNormalPointer(GL_FLOAT, 0, (void*)verts_size_in_bytes);
+#           endif
 
-#               ifdef CHA_HINT_USE_VAO
-                glBindVertexArray(0);
-                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-#               endif
+#           ifdef CHA_HINT_USE_VAO
+            glBindVertexArray(0);
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+#           endif
 
-#               ifndef CHA_HINT_USE_FFP_VBO
-                glDisableVertexAttribArray(CHA_HINT_VERTEX_ATTRIBUTE_LOCATION);
-                glDisableVertexAttribArray(CHA_HINT_NORMAL_ATTRIBUTE_LOCATION);
-#               else
-                glDisableClientState(GL_VERTEX_ARRAY);
-                glDisableClientState(GL_NORMAL_ARRAY);
-#               endif
+#           ifndef CHA_HINT_USE_FFP_VBO
+            glDisableVertexAttribArray(CHA_HINT_VERTEX_ATTRIBUTE_LOCATION);
+            glDisableVertexAttribArray(CHA_HINT_NORMAL_ATTRIBUTE_LOCATION);
+#           else
+            glDisableClientState(GL_VERTEX_ARRAY);
+            glDisableClientState(GL_NORMAL_ARRAY);
+#           endif
 
-                glBindBuffer(GL_ARRAY_BUFFER, 0);
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+        }
+#       endif
+        /* calculate aabb of all the static shape keys and merge it with the default aabb (we use a single aabb per mesh) */
+        {
+            int j,k;
+            for (i=0;i<p->num_shape_keys;i++) {
+                const struct cha_mesh_shape_key* sk = &p->shape_keys[i];
+                CHA_ASSERT(p->num_verts==sk->num_verts);
+                for (j=0;j<p->num_verts;j++)    {
+                    const float* v = &sk->verts[3*j];
+                    for (k=0;k<3;k++) {
+                        const float vk = v[k];
+                        if (p->aabb_min[k]>vk) p->aabb_min[k]=vk;
+                        else if (p->aabb_max[k]<vk) p->aabb_max[k]=vk;
+                    }
+                }
             }
+            for (k=0;k<3;k++) {
+                p->aabb_center[k]=(p->aabb_max[k]+p->aabb_min[k])*0.5f;
+                p->aabb_half_extents[k]=(p->aabb_max[k]-p->aabb_min[k])*0.5f;
+            }
+        }
     }
-#   endif
 }
 void cha_mesh_set_parent_bone(struct cha_mesh* p,int parent_mesh_idx,int parent_bone_idx,const float* parent_offset_matrix16,const float* parent_offset_matrix16_link) {
     struct cha_mesh* parent_mesh;
@@ -2844,8 +2864,18 @@ void cha_mesh_swap_parent_offset_matrices(struct cha_mesh* p)  {
 void cha_mesh_add_armature_weights(struct cha_mesh* p,int armature_idx,const struct cha_mesh_vertex_weight* weights,int num_weights)
 {
     int i,j;
-    const float aabb_scaling[3]={1.2f,6.f,1.f};  /* y is front, z is up here */
-    const float aabb_max_z_scaling = 1.75f;     /* well, to cover a character with arms up we need this */
+    /* we must enlarge our aabb to take into account all possible animations (except root bone) */
+#   ifndef CHA_AABB_BODY_SCALING_X
+#       define CHA_AABB_BODY_SCALING_X (1.2f)
+#   endif
+#   ifndef CHA_AABB_BODY_SCALING_Y
+#       define CHA_AABB_BODY_SCALING_Y (1.75f)
+#   endif
+#   ifndef CHA_AABB_BODY_SCALING_Z
+#       define CHA_AABB_BODY_SCALING_Z (6.f)
+#   endif
+    const float aabb_scaling[3]={CHA_AABB_BODY_SCALING_X,CHA_AABB_BODY_SCALING_Z,CHA_AABB_BODY_SCALING_Y};  /* y is front, z is up here */
+    //const float aabb_max_z_scaling = 1.f;//75f;     /* well, to cover a character with arms up we need this */
     CHA_ASSERT(!p->weights && p->num_weights==0);
     CHA_ASSERT(num_weights==p->num_verts*3);    /* we use 3 weights per vertex */    
     p->num_weights = num_weights;
@@ -2864,10 +2894,10 @@ void cha_mesh_add_armature_weights(struct cha_mesh* p,int armature_idx,const str
         for (j=0;j<3;j++)   {
             const int bi = weights[j].bone_idx;
             CHA_ASSERT(bi<32);  /* mask is 32-bit */
-            if (bi>=0) (*mask)|=(1<<((unsigned)bi));}
+            if (bi>=0) (*mask)|=(1U<<bi);}
     }
     /* enlarge aabb a bit to take armature poses into account */
-    p->aabb_max[2]*=aabb_max_z_scaling;
+    //p->aabb_max[2]*=aabb_max_z_scaling;
     for (i=0;i<3;i++) {
         p->aabb_min[i]*=aabb_scaling[i];p->aabb_max[i]*=aabb_scaling[i];
         p->aabb_center[i]=(p->aabb_max[i]+p->aabb_min[i])*0.5f;
@@ -3307,7 +3337,7 @@ float cha_mesh_instance_calculate_bone_space_pose_matrices_from_action_ex(struct
             struct cha_mesh_instance_pose_data* pose_data = &pose_data_list[i];
             float* pose_matrix = &pose_matrix_list[16*i];
             /* we must fill 'pose_data' from key frames inside 'stream' and then convert 'pose_data' to 'pose_matrix' */
-            if (!(bone_exclude_mask&(1<<i)) && stream) {
+            if (!(bone_exclude_mask&(1U<<i)) && stream) {
                 if (stream->num_rotation_key_frames) {
                     float* rot_out = pose_data->rot;    /* used also as input in some cases */
                     const int sz = stream->num_rotation_key_frames;
@@ -3358,7 +3388,7 @@ float cha_mesh_instance_calculate_bone_space_pose_matrices_from_action_ex(struct
             float* tra_in = pose_data->tra;
             int ok;
 
-            if (!(bone_exclude_mask&(1<<i))) {
+            if (!(bone_exclude_mask&(1U<<i))) {
                 ok = 0;
                 for (j=0;j<2;j++)   {
                     const struct cha_armature_action_bone_key_frame_stream* stream = streams[j];
@@ -3446,13 +3476,9 @@ void cha_mesh_instance_update_bone_matrix(struct cha_mesh_instance* p,int bone_i
         const int can_skip_bone = (pose_data->rot_dirty==0 || pose_data->rot_dirty==3) &&
                                     (pose_data->tra_dirty==0 || pose_data->tra_dirty==3);
         CHA_ASSERT(bone_idx<armature->num_bones);
-#       ifndef CHA_ALLOW_ROOT_ONLY_POSE_OPTIMIZATION
-        if (!can_skip_bone || (b->parent_idx>=CHA_BONE_NAME_ROOT && (p->pose_bone_mask&(1<<((unsigned)b->parent_idx)))))
-#       else
-        if (!can_skip_bone || (b->parent_idx>CHA_BONE_NAME_ROOT && (p->pose_bone_mask&(1<<((unsigned)b->parent_idx)))))
-#       endif
+        if (!can_skip_bone || (b->parent_idx>=CHA_BONE_NAME_ROOT && (p->pose_bone_mask&(1U<<b->parent_idx))))
         {
-            p->pose_bone_mask|=(1<<b->idx);
+            p->pose_bone_mask|=(1U<<b->idx);
             if (pose_data->rot_dirty>0 && pose_data->rot_dirty<3)    {
                 CHA_ASSERT(pose_data->rot_dirty==1 || pose_data->rot_dirty==2);
                 if (pose_data->rot_dirty==1) {
@@ -4159,7 +4185,7 @@ void cha_character_group_init(struct cha_character_group* p,int num_men,int num_
     p->num_men=num_men;p->num_ladies=num_ladies;
     if (p->num_men)     p->men=p->instances;
     if (p->num_ladies)  p->ladies=&p->instances[num_men];
-    if (p->num_instances<5) step_radius+=step_radius*0.15f*p->num_instances;
+    if (p->num_instances<=6) step_radius+=step_radius*0.1f*p->num_instances;
     for (i=0;i<p->num_instances;i++)    {
         const int is_man = i<p->num_men?1:0;
         const char* name = is_man ? male_names[i%num_male_names] : female_names[(i-p->num_men)%num_female_names];
@@ -4229,7 +4255,7 @@ CHA_API_DEF void Character_Init(void) {
     /*cha_mesh_display(&gCharacterMeshes[CHA_MESH_NAME_EYE]);
     cha_mesh_display(&gCharacterMeshes[CHA_MESH_NAME_MOUTH]);*/
 
-    CHA_ASSERT(CHA_BONE_MASK_ALL==(1<<gCharacterArmatures[CHA_ARMATURE_NAME_BODY].num_bones)-1);
+    CHA_ASSERT(CHA_BONE_MASK_ALL==(1U<<gCharacterArmatures[CHA_ARMATURE_NAME_BODY].num_bones)-1);
 }
 CHA_API_DEF void Character_Destroy(void)  {
     int i;       

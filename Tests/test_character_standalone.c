@@ -861,7 +861,7 @@ void glDrawBoneCallback(const struct cha_mesh_instance* mi,int bone_idx,const fl
 void cha_mesh_instance_draw_armature_opengl(const struct cha_mesh_instance* mi)  {
     CHA_ASSERT(mi->armature);
     {
-        const unsigned deselected_mask = CHA_BONE_MASK_ALL&(~mi->selected_bone_mask);
+        const unsigned deselected_mask = CHA_BONE_MASK_INVERSE(mi->selected_bone_mask);
         const unsigned   selected_mask = mi->selected_bone_mask;
         glLineWidth(1.f);
         glDepthMask(GL_FALSE);glDisable(GL_DEPTH_TEST);
@@ -961,15 +961,6 @@ void CharacterGroupMoveAndAnimate(float totalTimeSeconds,float frameTimeSeconds)
             pose_data->tra_dirty = 2;
             //chm_Mat4Rotate(mary->mMatrix,360.f*amount,0.f,1.f,0.f);
         }
-        //mi->pose_bone_mask = 0;
-        //cha_mesh_instance_update_bone_matrices(mi);
-        //cha_mesh_instance_update_vertices(mi);
-        /*if (last_bone_mask!=mi->pose_bone_mask) {
-            last_bone_mask=mi->pose_bone_mask;
-            fprintf(stderr,"mi->pose_bone_mask=%u",mi->pose_bone_mask);
-            if (mi->pose_bone_mask==CHA_BONE_MASK_ALL) fprintf(stderr," (=CHA_BONE_MASK_ALL)");
-            fprintf(stderr,";\n");
-        }*/
     }
 #   elif 1
     {   // TEST: skeletal animation
@@ -985,6 +976,7 @@ void CharacterGroupMoveAndAnimate(float totalTimeSeconds,float frameTimeSeconds)
     }
 #   endif
 #   if 1
+    /* code used to make peter walk/run (in place) */
     {   // TEST: skeletal animation
         struct cha_mesh_instance* mi = peter_mi;
         const float additional_time_to_get_to_first_frame = 1.0f;    // seconds
@@ -1061,6 +1053,33 @@ void CharacterGroupMoveAndAnimate(float totalTimeSeconds,float frameTimeSeconds)
                         cha_mesh_instance_calculate_bone_space_pose_matrices_from_action(mi,anim_idx,animation_time,additional_time_to_get_to_first_frame);
                     }
                     ++anim_idx;anim_idx%=armature->num_actions;
+                }
+            }
+        }
+    }
+#   endif
+
+    /* alternative code used to perform animations on characters different from peter and mary */
+#   if 0
+    {
+        const struct cha_armature* armature = peter_mi->armature;   /* all characters share the same armature */
+        CHA_ASSERT(armature);
+        if (armature->num_actions>2) {
+            const float animation_speed = 1.f;
+            const float additional_time_to_get_to_first_frame = 2.5f*animation_speed;    // this value MUST be constant through all the animation time (i.e. if 'animation_speed' is not constant it MUST be removed from here).
+            const float repeat_time = 5.f;
+            float animation_time=totalTimeSeconds*animation_speed;      // good only for when 'animation_speed' is constant through all the animation time
+            const int anim_idx_delta = (int)(animation_time/repeat_time);
+            animation_time=fmodf(animation_time,repeat_time);
+            for (i=0;i<group->num_instances;i++)    {
+                struct cha_character_instance* inst = &group->instances[i];
+                if (inst!=peter && inst!=mary)  {
+                    int anim_idx = (i+anim_idx_delta)%armature->num_actions;
+                    while (anim_idx==CHA_ARMATURE_ACTION_NAME_CYCLE_RUN || anim_idx==CHA_ARMATURE_ACTION_NAME_CYCLE_WALK) anim_idx=(anim_idx+1)%armature->num_actions;   // we skip these (already shown by peter)
+                    if (inst->active && !inst->culled)  {
+                        struct cha_mesh_instance* mi = &inst->mesh_instances[CHA_MESH_NAME_BODY];
+                        cha_mesh_instance_calculate_bone_space_pose_matrices_from_action(mi,anim_idx,animation_time,additional_time_to_get_to_first_frame);
+                    }
                 }
             }
         }
