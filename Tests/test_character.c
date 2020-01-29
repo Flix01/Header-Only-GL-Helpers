@@ -467,7 +467,9 @@ void my_mesh_instance_draw_callback_opengl(const struct cha_mesh_instance* mi,co
 #           else
             Teapot_SetColorAmbientAndDiffuse(pMat->amb,pMat->dif);
 #           endif
+            if (pMat->dif[3]<1.f) glEnable(GL_BLEND);
             glDrawElements(GL_TRIANGLES, indsCount, GL_UNSIGNED_SHORT,(const void *) (indsStart*sizeof(unsigned short)));
+            if (pMat->dif[3]<1.f) glDisable(GL_BLEND);
         }
     }
     else    {

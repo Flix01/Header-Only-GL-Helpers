@@ -120,7 +120,7 @@ TODO:
 #define MINIMATH_H_
 
 #define NM_VERSION               "1.0 WIP"
-#define NM_VERSION_NUM           0004
+#define NM_VERSION_NUM           0005
 
 #ifdef NM_HAS_CFG
 #   include "minimath_cfg.h"
@@ -633,6 +633,10 @@ NM_API_DEF_EXT_INL void nm_GetFrustumPlaneEquations(nmoat planeEquationsOut[6][4
 NM_API_DEF_EXT_INL int nm_FrustumOBBVisibilityTest(const nmoat frustumPlanes[6][4],const nmoat* NM_RESTRICT mfMatrix16,nmoat aabbMinX,nmoat aabbMinY,nmoat aabbMinZ,nmoat aabbMaxX,nmoat aabbMaxY,nmoat aabbMaxZ);
 NM_API_DEF_EXT_INL int nm_FrustumBSVisibilityTest(const nmoat normalizedFrustumPlanes[6][4],const nmoat* NM_RESTRICT mfMatrix16,nmoat bsCenterX,nmoat bsCenterY,nmoat bsCenterZ,nmoat bsRadius,const nmoat* NM_RESTRICT optionalFrustumCenterInMfSpace3,nmoat optionalFrustumRadius);
 NM_API_DEF_EXT_INL int nm_IsAabbVisible(const nmoat normalizedFrustumPlanes[6][4],const nmoat* NM_RESTRICT mfMatrix16,const nmoat* NM_RESTRICT aabbMin3,const nmoat* NM_RESTRICT aabbMax3,nmoat aabbRadius,nmoat scalingX,nmoat scalingY,nmoat scalingZ,const nmoat* NM_RESTRICT optionalFrustumCenterInMfSpace3,nmoat optionalFrustumRadius);
+
+// 1-dimensional DFT (and its inverse) when 'size_pot' is a power of two, and 2^('log2size')='size_pot'.
+// 'inverse_transform' and 'dont_scale_inverse_transform_like_fftw3_does' are boolean values.
+NM_API_DEF_EXT_INL void nm_DiscreteFourierTransform1D(nmoat out[][2],const nmoat in[][2],int size_pot,int log2size,int inverse_transform,int dont_scale_inverse_transform_like_fftw3_does);
 
 
 // These two function used to be implementation-private, and are now exposed (TODO: find out what they do and document them)
@@ -4454,6 +4458,85 @@ NM_API_IMPL int nm_IsAabbVisible(const nmoat normalizedFrustumPlanes[6][4],const
     int rv = nm_FrustumBSVisibilityTest(normalizedFrustumPlanes,mfMatrix16,aabbCenter[0],aabbCenter[1],aabbCenter[2],aabbRadius*max_scaling,optionalFrustumCenterInMfSpace3,optionalFrustumRadius);
     if (rv==2) return nm_FrustumOBBVisibilityTest(normalizedFrustumPlanes,mfMatrix16,aabbMin3[0]*scalingX,aabbMin3[1]*scalingY,aabbMin3[2]*scalingZ,aabbMax3[0]*scalingX,aabbMax3[1]*scalingY,aabbMax3[2]*scalingZ);
     else return rv;
+}
+
+
+
+NM_API_IMPL void nm_DiscreteFourierTransform1D(nmoat out[][2],const nmoat in[][2],int size_pot,int log2size,int inverse_transform,int dont_scale_inverse_transform_like_fftw3_does)  {
+    /*  DFT Stuff
+        For k and n in [0,N-1]:
+        X(k) = SUM[n:0->N-1] x(n)*exp(-i*2*PI*k*n/N) = SUM[n:0->N-1] x(n)*[cos(2*PI*k*n/N) - i*sin(2*PI*k*n/N)];
+        x(n) = (1/N)*SUM[k:0->N-1] X(k)*exp(i*2*PI*k*n/N) = (1/N)*SUM[k:0->N-1] X(k)*[cos(2*PI*k*n/N) + i*sin(2*PI*k*n/N)];
+
+        DFT of real and purely imaginary signals
+        ->  If x in [0,N-1] are real numbers, as they often are in practical applications,
+        then the DFT X in [0,N−1] is even symmetric:
+        It follows that, for even N, X(0) and X(N/2) are real-values, and the remainder of the DFT is completely specified by just N/2−1 complex numbers.
+
+        -> If x in [0,N-1] are purely imaginary numbers, then the DFT X in [0,N−1] is odd symmetric
+    */
+    // WORKS! Tested against -lfftw3
+    nmoat angle, wtmp, wpr, wpi, wr, wi, tc[2];
+    int n = 1, n2, k, m, i, j=0;
+    const nmoat pi2 = (nmoat)(M_PI*2.0);
+
+    NM_ASSERT(1<<log2size==size_pot);
+
+    // Step (1):
+    // Copy 'in' to 'out', rearranging elements so that we can safely operate only on 'out' later.
+    // Reference used for step (1): http://librow.com/articles/article-10 [very good article indeed]
+    // LICENSE of reference code: The code is property of LIBROW. You can use it on your own when utilizing credit LIBROW site [Hope I've done it with the line above]
+    if (in!=out)    {
+        for (i = 0; i < size_pot; i++)	{
+            m = size_pot;
+            out[j][0] = in[i][0]; out[j][1] = in[i][1];
+            while (j & (m>>=1))	j&=~m;	// remove m
+            j|=m;	// set m
+        }
+    }
+    else    {
+        for (i=0;i<size_pot;i++)	{
+            m = size_pot;
+            if (j>i)	{
+                //   Swap entries
+                    tc[0]=out[j][0];	    tc[1]=out[j][1];
+                out[j][0]=out[i][0];	out[j][1]=out[i][1];
+                out[i][0]=    tc[0];	out[i][1]=    tc[1];
+            }
+            while (j & (m>>=1))	j&=~m;	// remove m
+            j|=m;	// set m
+        }
+    }
+
+    // Step (2):
+    // Safely operate only on 'out' here
+    // Reference used for step (2): https://www.programming-techniques.com/2013/05/calculation-of-discrete-fourier-transformdft-in-c-c-using-naive-and-fast-fourier-transform-fft-method.html
+    // LICENSE of reference code: not present (probably public domain). [Otherwise we should stick to LIBROW implementation here too]
+    for (k = 0; k < log2size; ++k)	{
+        n2 = n; n <<= 1;
+        angle = (inverse_transform)?pi2/(nmoat)n:-pi2/(nmoat)n;
+        wtmp= nmh_sin((nmoat)0.5*angle); wpr = -(nmoat)2.0*wtmp*wtmp; wpi = nmh_sin(angle);
+        wr = (nmoat)1.0; wi = (nmoat)0.0;
+        for (m=0; m < n2; ++m) {
+            for (i=m; i < size_pot; i+=n) {
+                j = i+n2;
+                tc[0] = wr * out[j][0] - wi * out[j][1];
+                tc[1] = wr * out[j][1] + wi * out[j][0];
+
+                out[j][0]=out[i][0]-tc[0];out[i][0]+=tc[0];
+                out[j][1]=out[i][1]-tc[1];out[i][1]+=tc[1];
+            }
+            wr=(wtmp=wr)*wpr-wi*wpi+wr;
+            wi=wi*wpr+wtmp*wpi+wi;
+        }
+    }
+    if (inverse_transform && !dont_scale_inverse_transform_like_fftw3_does) {
+        const nmoat scale = (nmoat)1.0/(nmoat)size_pot;
+        for(i = 0;i < n /*??? or size_pot?*/;i++) {
+            out[i][0] *= scale;
+            out[i][1] *= scale;
+        }
+    }
 }
 
 

@@ -2522,6 +2522,7 @@ struct cha_mesh {
     float parent_offset_matrix[16];  /* used when some valid 'parent' is set */
     float parent_offset_matrix_link[16];int parent_offset_matrix_link_present;  /* currently just used as a hack for displaying 2 eyes with a single eye mesh */
 
+    int inactive_by_default;    /* true on optional meshes (e.g. hat) */
 #   ifdef CHA_USE_VBO
     GLuint vbo,vao,ibo; /* 'vbo' with 'verts' 'norms'; ibo with 'inds' */
 #   endif
@@ -2965,6 +2966,7 @@ struct cha_mesh_instance {
     float *verts_shk,*norms_shk;    /* size=mesh->num_verts; buffer for the animated verts/norms */
     int static_shk_index;           /* -1 if static shape keys are not used */
 
+    int active;                     /* user can modify this only if mesh->inactive_by_default==1 */
     int culled;
     struct cha_character_instance* parent_character_instance;
 
@@ -3020,6 +3022,7 @@ void cha_mesh_instance_init(struct cha_mesh_instance* p,const struct cha_mesh* m
     p->static_shk_index = mesh->shape_keys_type_static ? optional_static_shape_key_idx : -1;
     CHA_ASSERT(p->static_shk_index<mesh->num_shape_keys);
     memcpy(p->mvMatrix,id16,16*sizeof(float));
+    p->active = p->mesh->inactive_by_default?0:1;
     if (mesh->armature_idx>-1)  {
         /* has skeletal animation */
         const struct cha_mesh_shape_key* sk = (mesh->shape_keys_type_static && p->static_shk_index>-1) ? &mesh->shape_keys[p->static_shk_index] : NULL;
@@ -3733,10 +3736,14 @@ void cha_character_instance_init(struct cha_character_instance* p,const char* na
     p->num_meshes = CHA_MESH_NAME_COUNT;
     p->mesh_instances = (struct cha_mesh_instance*) cha_malloc(p->num_meshes*sizeof(struct cha_mesh_instance));
     /*memset(p->mesh_instances,0,p->num_meshes*sizeof(struct cha_mesh_instance));*/
-    for (i=0;i<CHA_MESH_NAME_COUNT;i++) {
-        const int gender_type = (gender_type_female && (i==CHA_MESH_NAME_BODY || i==CHA_MESH_NAME_HEAD)) ? 0 : -1;
-        cha_mesh_instance_init(&p->mesh_instances[i],&gCharacterMeshes[i],gender_type);
-        p->mesh_instances[i].parent_character_instance=p;
+    for (i=0;i<CHA_MESH_NAME_COUNT;i++) {        
+        struct cha_mesh_instance* mi = &p->mesh_instances[i];
+        const struct cha_mesh* mesh = &gCharacterMeshes[i];
+        int gender_type = -1;
+        //gender_type = (gender_type_female && (i==CHA_MESH_NAME_BODY || i==CHA_MESH_NAME_HEAD)) ? 0 : -1;
+        if (gender_type_female && mesh->num_shape_keys>0 && mesh->shape_keys_type_static && (strcmp(mesh->shape_keys[0].name,"woman")==0)) gender_type = 0;
+        cha_mesh_instance_init(mi,mesh,gender_type);    // mi->mesh is set only here.
+        mi->parent_character_instance=p;
     }
 }
 void cha_character_instance_destroy(struct cha_character_instance* p)   {
@@ -3763,10 +3770,11 @@ void cha_character_instance_draw(const struct cha_character_instance* inst,int n
     for (mi_idx=0;mi_idx<inst->num_meshes;mi_idx++)    {
         const struct cha_mesh_instance* mi = &inst->mesh_instances[mi_idx];
         const int mi_idx_mask = (1U<<mi_idx);
-        if (!mi->culled
+        if (mi->active && (!mi->culled
 #               ifndef CHA_CULL_ALL_MESH_INSTANCES_WHEN_NO_MATERIALS_IS_SET
                 || (no_materials && ((mi_idx_mask&(CHA_MESH_MASK_BODY|CHA_MESH_MASK_MOUTH_AND_EYE))==0))  /* this line draws culled HEADs when 'no_materials' is set (avoids headless shadows in some cases) */
 #               endif
+                )
                 )    {
             CHA_ASSERT(mi->mesh);
             if (!(mesh_name_mask_to_exclude&mi_idx_mask)) {
@@ -3811,6 +3819,7 @@ void cha_character_group_updateMatrices(struct cha_character_group** pp,int num_
             if (inst->active)   {
                 inst->culled = 0;
                 tm[0]=inst->scaling[0];tm[6]=-inst->scaling[2];tm[9]=inst->scaling[1];
+
 #               ifdef CHA_DOUBLE_PRECISION
                 chm_Mat4MulUncheckArgsd(mMatrixOut,inst->mMatrixIn,tm); // (with so many zeros we can do better...)
 #               else
@@ -3852,6 +3861,7 @@ void cha_character_group_updateMatrices(struct cha_character_group** pp,int num_
                     // There's still a Z offset (b->length) that must be appended here, why?
                     chm_Mat4Translatef(inst->mvMatrixOut,0.f,b->length,0.f);
 
+
                     if (pMatrixNormalizedFrustumPlanesOrNull)   {
                         inst->culled = mi->culled = chm_IsOBBVisiblef(pMatrixNormalizedFrustumPlanesOrNull,inst->mvMatrixOut,mesh->aabb_min[0],mesh->aabb_min[1],mesh->aabb_min[2],mesh->aabb_max[0],mesh->aabb_max[1],mesh->aabb_max[2]) ? 0 : 1;
                         if (inst->culled) {
@@ -3868,6 +3878,7 @@ void cha_character_group_updateMatrices(struct cha_character_group** pp,int num_
                         const struct cha_mesh* mesh = mi->mesh;
                         float* mv = use_parent_offset_matrix_link ? (float*) mi->mvMatrix_link : (float*) mi->mvMatrix;
                         CHA_ASSERT(mesh);
+                        if (!mi->active) continue;  // is this correct? What if it's the parent of another mesh?
                         mi->culled = 0;
                         //--------------------------------------------------------------------
                         if (mesh->parent_mesh_idx>=0) {
@@ -4196,12 +4207,17 @@ void cha_character_group_init(struct cha_character_group* p,int num_men,int num_
                     (i-p->num_men)<p->num_men ? (((i-p->num_men)*2+1)) : (((p->num_men)*2+(i-2*p->num_men)))
                     ;
         const int mtl_idx = (is_man ? (i+(CHA_CHARACTER_GROUP_INIT_NUM_COLORS/2+1)) : (i-p->num_men))%CHA_CHARACTER_GROUP_INIT_NUM_COLORS;
+        const int has_hat = (mtl_idx%4==2)?1:0, has_glasses= (mtl_idx%3==1)?1:0;
         const choat sina = sin(angle),cosa = cos(angle);
         cha_character_instance_init(inst,name,i<p->num_men?0:1);
         inst->parent_group = p;inst->group_idx=i;
 
         if (is_man) {inst->scaling[0]=inst->scaling[1]=inst->scaling[2]=men_scaling;}
         else {inst->scaling[0]=inst->scaling[1]=inst->scaling[2]=ladies_scaling;}
+
+        if (has_hat)        inst->mesh_instances[CHA_MESH_NAME_HAT].active=1;
+        if (has_glasses)    inst->mesh_instances[CHA_MESH_NAME_GLASSES].active=1;
+
         // positions
         CHA_ASSERT(interleaved_idx<p->num_instances);
 #       ifdef CHA_DOUBLE_PRECISION
@@ -4246,6 +4262,8 @@ CHA_API_DEF void Character_Init(void) {
     cha_mesh_init_head(&gCharacterMeshes[CHA_MESH_NAME_HEAD]);
     cha_mesh_init_eye(&gCharacterMeshes[CHA_MESH_NAME_EYE]);
     cha_mesh_init_mouth(&gCharacterMeshes[CHA_MESH_NAME_MOUTH]);
+    cha_mesh_init_hat(&gCharacterMeshes[CHA_MESH_NAME_HAT]);
+    cha_mesh_init_glasses(&gCharacterMeshes[CHA_MESH_NAME_GLASSES]);
 
     cha_materials_init_names(&gMaterialNames);   /* this doesn't need destruction */
 
@@ -4333,7 +4351,7 @@ void cha_mesh_instance_draw_callback_opengl(const struct cha_mesh_instance* mi,c
             glMaterialfv(GL_FRONT,GL_SPECULAR,pMat->spe);   /* shi is in pMat->spe[3]. However 'glMaterialf' docs say: 'While the ambient, diffuse, specular and emission material parameters all have alpha components, only the diffuse alpha component is used in the lighting computation.' */
             glMaterialf(GL_FRONT,GL_SHININESS,pMat->spe[3]);
 
-
+            if (pMat->dif[3]<1.f) glEnable(GL_BLEND);
             glBegin(GL_TRIANGLES);
             for (j=indsStart;j<indsEnd;j++)  {
                 i0 = inds[j];
@@ -4343,6 +4361,7 @@ void cha_mesh_instance_draw_callback_opengl(const struct cha_mesh_instance* mi,c
                 glVertex3fv(v0);
             }
             glEnd();
+            if (pMat->dif[3]<1.f) glDisable(GL_BLEND);
         }
         //glEnd();
     }
@@ -4408,7 +4427,10 @@ void cha_mesh_instance_draw_callback_opengl(const struct cha_mesh_instance* mi,c
             glMaterialfv(GL_FRONT,GL_SPECULAR,pMat->spe);   /* shi is in pMat->spe[3]. However 'glMaterialf' docs say: 'While the ambient, diffuse, specular and emission material parameters all have alpha components, only the diffuse alpha component is used in the lighting computation.' */
             glMaterialf(GL_FRONT,GL_SHININESS,pMat->spe[3]);
 
+            //*((float*)&pMat->dif[3]) = 0.25f;   // nothing changes...
+            if (pMat->dif[3]<1.f) glEnable(GL_BLEND);
             glDrawElements(GL_TRIANGLES, indsCount, GL_UNSIGNED_SHORT,(const void *) (indsStart*sizeof(unsigned short)));
+            if (pMat->dif[3]<1.f) glDisable(GL_BLEND);
         }
     }
     glPopMatrix();

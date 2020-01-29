@@ -105,7 +105,6 @@ for glut.h, glew.h, etc. with something like:
 #   define  glLoadMatrix(M)     glLoadMatrixd(M)
 #endif
 
-
 //#define VISUALIZE_DEPTH_TEXTURE
 //#define USE_UNSTABLE_SHADOW_MAPPING_TECHNIQUE // Better resolution, but shadow-swimming as the camera rotates (on static objects).
                                                 // in camera ortho3d mode [F1], the resolution is further better, but shadow-swimming appears when zooming in-out too.
@@ -600,6 +599,12 @@ static const char* DefaultPassVertexShader[] = {
     "   vec3 normal_coeff=vec3(1.0/dot(gl_ModelViewMatrix[0].xyz,gl_ModelViewMatrix[0].xyz),1.0/dot(gl_ModelViewMatrix[1].xyz,gl_ModelViewMatrix[1].xyz),1.0/dot(gl_ModelViewMatrix[2].xyz,gl_ModelViewMatrix[2].xyz));\n"
     "   //vec3 normal = normalize(mat3(gl_ModelViewMatrix)*(gl_Normal*normal_coeff));\n"
     "	vec3 normal = normalize(vec3(gl_ModelViewMatrix * vec4(gl_Normal.xyz*normal_coeff,0.0)));\n"    // same as line above if we don't have the mat3 cast (or if this is faster... and it would be useful to know it!)
+#   endif
+    "\n"
+//#   define CARTOON_STYLE    // but it should be applied to characters only...
+#   ifdef CARTOON_STYLE
+    "   const vec3 zAxis = vec3(0.0,0.0,1.0);\n"
+    "   normal = dot(normal,zAxis)>0.05?zAxis:(0.2*normal);\n"
 #   endif
     "\n"
     "	vec3 lightVector = /*normalize(*/gl_LightSource[0].position.xyz/*)*/;\n"   // already in eye space
