@@ -4178,7 +4178,8 @@ void cha_character_group_init(struct cha_character_group* p,int num_men,int num_
         /* CHA_MATERIAL_NAME_TEETH*/        {0,0,0,0,0, 0,0,0,0,0,  0,0,0,0,0, 0,0,0,0,0},
         /* CHA_MATERIAL_NAME_TROUSERS*/     {0,0x003153ff,0x004040ff,0x0038a8ff,0xc2b280ff,     0xE9D66BFF,0x2F4F4FFF,0x008000FF,0xE6E6FAFF,0x73C2FBFF,
                                             0x800000ff,0x88540Bff,0x305933ff,0x36454Fff,0x232B2Bff,       0x9E1B32ff,0x536878ff,0x008000ff,0x4A5D23ff,0x3C1414ff},
-        /* CHA_MATERIAL_NAME_WHITE_EYE*/    {0,0,0,0,0, 0,0,0,0,0,  0,0,0,0,0, 0,0,0,0,0}
+        /* CHA_MATERIAL_NAME_WHITE_EYE*/    {0,0,0,0,0, 0,0,0,0,0,  0,0,0,0,0, 0,0,0,0,0},
+        /* CHA_MATERIAL_NAME_ZGLASSES*/     {0,0,0x7fffd480,0,0, 0xcd9575a0,0,0xf0ffff80,0,0,  0,0,0xa52a2aa0,0,0, 0,0x9f8170c0,0,0x669980,0}
     };
     const float shininesses[CHA_MATERIAL_NAME_COUNT] = {
         /* CHA_MATERIAL_NAME_HAIR */        0,
@@ -4190,7 +4191,8 @@ void cha_character_group_init(struct cha_character_group* p,int num_men,int num_
         /* CHA_MATERIAL_NAME_T_SHIRT*/      0,
         /* CHA_MATERIAL_NAME_TEETH*/        0,
         /* CHA_MATERIAL_NAME_TROUSERS*/     0,
-        /* CHA_MATERIAL_NAME_WHITE_EYE*/    0
+        /* CHA_MATERIAL_NAME_WHITE_EYE*/    0,
+        /* CHA_MATERIAL_NAME_ZGLASSES*/     0
     };
 
     const choat id16[16] = {1,0,0,0,    0,1,0,0,    0,0,1,0,    0,0,0,1},step_angle=2.399892449;
