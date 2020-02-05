@@ -4440,7 +4440,6 @@ void cha_mesh_instance_draw_callback_opengl(const struct cha_mesh_instance* mi,c
             glMaterialfv(GL_FRONT,GL_SPECULAR,pMat->spe);   /* shi is in pMat->spe[3]. However 'glMaterialf' docs say: 'While the ambient, diffuse, specular and emission material parameters all have alpha components, only the diffuse alpha component is used in the lighting computation.' */
             glMaterialf(GL_FRONT,GL_SHININESS,pMat->spe[3]);
 
-            //*((float*)&pMat->dif[3]) = 0.25f;   // nothing changes...
             if (pMat->dif[3]<1.f) glEnable(GL_BLEND);
             glDrawElements(GL_TRIANGLES, indsCount, GL_UNSIGNED_SHORT,(const void *) (indsStart*sizeof(unsigned short)));
             if (pMat->dif[3]<1.f) glDisable(GL_BLEND);
