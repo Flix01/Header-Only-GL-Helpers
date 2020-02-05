@@ -3605,18 +3605,40 @@ void cha_mesh_instance_update_vertices(struct cha_mesh_instance* p)    {
         const struct cha_mesh* mesh = p->mesh;
         const float* cverts = p->verts_shk ? p->verts_shk : mesh->verts;
         const float* cnorms = p->norms_shk ? p->norms_shk : mesh->verts;
+        const float* pose_matrix;
+        const struct cha_mesh_vertex_weight* w;
+/* ========================================================================================== */
+//#       define CHA_VERTEX_SKINNING_APPROACH 2   // optional: not sure what is faster (link below says 2, but I'm not convinced, because we don't use tangents)
 
-        //float mRootGrabInv[16];chm_Mat4Invert(mRootGrabInv,&p->pose_matrices[CHA_BONE_SPACE_GRABBING][16*CHA_BONE_NAME_ROOT]);
+#       ifndef CHA_VERTEX_SKINNING_APPROACH
+#           define CHA_VERTEX_SKINNING_APPROACH 1
+#       elif (CHA_VERTEX_SKINNING_APPROACH>2 || CHA_VERTEX_SKINNING_APPROACH<=0)
+#           error CHA_VERTEX_SKINNING_APPROACH must be set to 1 or 2
+#       endif
+        /* For other possible optimizations (using SIMD), please see this old .pdf:
+              [source:] https://software.intel.com/sites/default/files/m/d/4/1/d/8/293750.pdf
+              Fast Skinning    March 21st 2005    J.M.P. van Waveren  © 2005, Id Software, Inc.
+        */
+/* ========================================================================================== */
+#       if CHA_VERTEX_SKINNING_APPROACH==2
+        float matsum[16];   // matsum[4*k+3] not used, with k in [0,3]
+        const int startj=1;
+#       else
+        const int startj=0;
+#       endif
 
         CHA_ASSERT(mesh->num_weights==mesh->num_verts*NUM_WEIGHT_PER_VERTEX);
         CHA_ASSERT(mesh->weights && mesh->weight_bone_masks);
         CHA_ASSERT(p->verts && p->norms);
         if (p->pose_bone_mask==0) p->pose_bone_mask = CHA_BONE_MASK_ALL;
+
+#       if CHA_VERTEX_SKINNING_APPROACH==1
         if (p->pose_bone_mask==CHA_BONE_MASK_ALL)   {
-            /* optimization */
+            // optimization (initialize all v and n once)
             memset(p->verts,0,3*mesh->num_verts*sizeof(float));
             memset(p->norms,0,3*mesh->num_verts*sizeof(float));
         }
+#       endif
         for (i=0;i<mesh->num_verts;i++) {
             const int i3 = 3*i;
             const int inw = NUM_WEIGHT_PER_VERTEX*i;
@@ -3626,52 +3648,54 @@ void cha_mesh_instance_update_vertices(struct cha_mesh_instance* p)    {
             float wsum=0.f;
             const int bone_mask_ok = (p->pose_bone_mask&vert_bone_mask)?1:0;
             if (bone_mask_ok) {
+#               if CHA_VERTEX_SKINNING_APPROACH==1
                 if (p->pose_bone_mask!=CHA_BONE_MASK_ALL)   {
+                    // initialize v and n
                     memset(v,0,3*sizeof(float));
                     memset(n,0,3*sizeof(float));
                 }
-
-                for (j=0;j<NUM_WEIGHT_PER_VERTEX;j++)   {
-                    const struct cha_mesh_vertex_weight* w = &mesh->weights[inw+j];
-                    if (w->bone_idx<0) break;
-                    CHA_ASSERT(w->bone_idx!=0); /* root is not a deform-bone */
+#               elif CHA_VERTEX_SKINNING_APPROACH==2
+                // initialize matsum
+                {
+                    w = &mesh->weights[inw+0];
+                    CHA_ASSERT(w->bone_idx>0);
+                    pose_matrix = &p->pose_matrices[CHA_BONE_SPACE_SKINNING][16*w->bone_idx];
                     wsum+=w->weight;
-                    {
-                        /* Here there are 3 optimizations that can be done:
-                           1) In an old .pdf I've read, they didn't sum 3 chm_Mat4MulPos(...),
-                              but they created new matrix instead, and then used this matrix to
-                              multiply both the vertex and the normal (and the tangent if present)
-                              [source:] https://software.intel.com/sites/default/files/m/d/4/1/d/8/293750.pdf
-                              Fast Skinning    March 21st 2005    J.M.P. van Waveren  © 2005, Id Software, Inc.
-                           2) We can speed up chm_Mat4MulPos(...) to use SIMD, and/or rearrange all the structs
-                              (using a preprocessing and postprocessing step) to make them more SIMD friendly
-                           3) We can simply support hardware skinning, so that we can reach the maximum performance
-                           Of course we're strong supporters of all the 'slow skinning' techniques, so we don't implement
-                           any of these bad speed hacks.
-                        */
-                        const float* pose_matrix = &p->pose_matrices[CHA_BONE_SPACE_SKINNING][16*w->bone_idx];
-                        {
-                            float tmp[3];
-                            chm_Mat4MulPosf(pose_matrix,tmp,vc[0],vc[1],vc[2]);
-                            for (k=0;k<3;k++) v[k]+=tmp[k]*w->weight;
-
-                            /*float tmp[3];float tmp2[3];
-                            chm_Mat4MulPosf(pose_matrix,tmp,vc[0],vc[1],vc[2]);
-                            chm_Mat4MulPosf(mRootGrabInv,tmp2,tmp[0],tmp[1],tmp[2]);
-                            for (k=0;k<3;k++) v[k]+=tmp2[k]*w->weight;*/
-                        }
-                        {
-                            float tmp[3];
-                            chm_Mat4MulDirf(pose_matrix,tmp,nc[0],nc[1],nc[2]);
-                            for (k=0;k<3;k++) n[k]+=tmp[k]*w->weight;
-
-                            /*float tmp[3];float tmp2[3];
-                            chm_Mat4MulDirf(pose_matrix,tmp,nc[0],nc[1],nc[2]);
-                            chm_Mat4MulDirf(mRootGrabInv,tmp2,tmp[0],tmp[1],tmp[2]);
-                            for (k=0;k<3;k++) n[k]+=tmp2[k]*w->weight;*/
-                        }
+                    for (k=0;k<3;k++)   {
+                        matsum[k]   =pose_matrix[k]*w->weight;
+                        matsum[k+4] =pose_matrix[k+4]*w->weight;
+                        matsum[k+8] =pose_matrix[k+8]*w->weight;
+                        matsum[k+12]=pose_matrix[k+12]*w->weight;
                     }
                 }
+#               endif
+                for (j=startj;j<NUM_WEIGHT_PER_VERTEX;j++)   {
+                    w = &mesh->weights[inw+j];
+                    if (w->bone_idx<0) {/*CHA_ASSERT(j>0);*/break;}
+                    CHA_ASSERT(w->bone_idx!=0); /* root is not a deform-bone */
+                    pose_matrix = &p->pose_matrices[CHA_BONE_SPACE_SKINNING][16*w->bone_idx];
+                    wsum+=w->weight;
+                    for (k=0;k<3;k++)   {
+#                       if CHA_VERTEX_SKINNING_APPROACH==1
+                        // We use unwrapped chm_Mat4MulPosf(...) and chm_Mat4MulDirf(...) here (simpler, slower and naive approach to software skinning)
+                        v[k] += (vc[0]*pose_matrix[k] + vc[1]*pose_matrix[k+4] + vc[2]*pose_matrix[k+8] + pose_matrix[k+12])*w->weight;
+                        n[k] += (nc[0]*pose_matrix[k] + nc[1]*pose_matrix[k+4] + nc[2]*pose_matrix[k+8])*w->weight;
+#                       elif CHA_VERTEX_SKINNING_APPROACH==2
+                        matsum[k]   +=pose_matrix[k]*w->weight;
+                        matsum[k+4] +=pose_matrix[k+4]*w->weight;
+                        matsum[k+8] +=pose_matrix[k+8]*w->weight;
+                        matsum[k+12]+=pose_matrix[k+12]*w->weight;
+#                       endif
+                    }
+                }
+
+#               if CHA_VERTEX_SKINNING_APPROACH==2
+                for (k=0;k<3;k++)   {
+                    v[k] = vc[0]*matsum[k] + vc[1]*matsum[k+4] + vc[2]*matsum[k+8] + matsum[k+12];
+                    n[k] = nc[0]*matsum[k] + nc[1]*matsum[k+4] + nc[2]*matsum[k+8];
+                }
+#               endif
+
                 //chm_Vec3Normalizef(n);    /* optional */
                 CHA_ASSERT(fabs(wsum-1.f)<0.001f);
                 //memset(p->norms,0,3*mesh->num_verts*sizeof(float));   // no normals

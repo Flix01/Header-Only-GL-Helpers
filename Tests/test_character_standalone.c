@@ -645,7 +645,7 @@ static const char* DefaultPassFragmentShader[] = {
     "//   shadowFactor = clamp(   exp(u_shadowDarkening.x*texture2D(u_shadowMap,(shadowCoordinateWdivide.st)).r) *   exp(-u_shadowDarkening.x*shadowCoordinateWdivide.z),u_shadowDarkening.y,1.0);\n"
     "	gl_FragColor.rgb = mix(gl_FrontLightModelProduct.sceneColor.rgb + v_ambient.rgb + \n"
     "   ((v_diffuse.rgb /*gl_Color.rgb*/+v_specular.rgb) * shadowFactor),u_fogColor,v_fog);\n"
-    "   gl_FragColor.a=1.0;\n"
+    "   gl_FragColor.a=v_diffuse.a;\n"  // mmmh, changing this does nothing
     "   \n"
     //    TEST: we could store materials as an int[4] (packing ambient,diffuse,specular,shininess: the latter with full 32-bit range), instead of using 12 floats + 1 more float for shininess
     //    [or we can keep floats in a single array: uniform vec4 material_data[4]; with 3 padding floats at the end. This is for using a single glUniform4fv(...) call per material]
