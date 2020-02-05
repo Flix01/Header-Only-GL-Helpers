@@ -3615,16 +3615,13 @@ void cha_mesh_instance_update_vertices(struct cha_mesh_instance* p)    {
 #       elif (CHA_VERTEX_SKINNING_APPROACH>2 || CHA_VERTEX_SKINNING_APPROACH<=0)
 #           error CHA_VERTEX_SKINNING_APPROACH must be set to 1 or 2
 #       endif
-        /* For other possible optimizations (using SIMD), please see this old .pdf:
+        /* For possible optimizations, please see this old .pdf:
               [source:] https://software.intel.com/sites/default/files/m/d/4/1/d/8/293750.pdf
               Fast Skinning    March 21st 2005    J.M.P. van Waveren  © 2005, Id Software, Inc.
         */
 /* ========================================================================================== */
 #       if CHA_VERTEX_SKINNING_APPROACH==2
         float matsum[16];   // matsum[4*k+3] not used, with k in [0,3]
-        const int startj=1;
-#       else
-        const int startj=0;
 #       endif
 
         CHA_ASSERT(mesh->num_weights==mesh->num_verts*NUM_WEIGHT_PER_VERTEX);
@@ -3632,13 +3629,6 @@ void cha_mesh_instance_update_vertices(struct cha_mesh_instance* p)    {
         CHA_ASSERT(p->verts && p->norms);
         if (p->pose_bone_mask==0) p->pose_bone_mask = CHA_BONE_MASK_ALL;
 
-#       if CHA_VERTEX_SKINNING_APPROACH==1
-        if (p->pose_bone_mask==CHA_BONE_MASK_ALL)   {
-            // optimization (initialize all v and n once)
-            memset(p->verts,0,3*mesh->num_verts*sizeof(float));
-            memset(p->norms,0,3*mesh->num_verts*sizeof(float));
-        }
-#       endif
         for (i=0;i<mesh->num_verts;i++) {
             const int i3 = 3*i;
             const int inw = NUM_WEIGHT_PER_VERTEX*i;
@@ -3648,28 +3638,27 @@ void cha_mesh_instance_update_vertices(struct cha_mesh_instance* p)    {
             float wsum=0.f;
             const int bone_mask_ok = (p->pose_bone_mask&vert_bone_mask)?1:0;
             if (bone_mask_ok) {
-#               if CHA_VERTEX_SKINNING_APPROACH==1
-                if (p->pose_bone_mask!=CHA_BONE_MASK_ALL)   {
+                // initialize using first weight (j=0)
+                w = &mesh->weights[inw+0];
+                CHA_ASSERT(w->bone_idx>0);  /* first weight must be valid (and root==0 is not a deform-bone) */
+                pose_matrix = &p->pose_matrices[CHA_BONE_SPACE_SKINNING][16*w->bone_idx];
+                wsum+=w->weight;
+                for (k=0;k<3;k++)   {
+#                   if CHA_VERTEX_SKINNING_APPROACH==1
                     // initialize v and n
-                    memset(v,0,3*sizeof(float));
-                    memset(n,0,3*sizeof(float));
+                    // We use unwrapped chm_Mat4MulPosf(...) and chm_Mat4MulDirf(...) here (simpler and naive approach to software skinning)
+                    v[k] = (vc[0]*pose_matrix[k] + vc[1]*pose_matrix[k+4] + vc[2]*pose_matrix[k+8] + pose_matrix[k+12])*w->weight;
+                    n[k] = (nc[0]*pose_matrix[k] + nc[1]*pose_matrix[k+4] + nc[2]*pose_matrix[k+8])*w->weight;
+#                   elif CHA_VERTEX_SKINNING_APPROACH==2
+                    // initialize matsum
+                    matsum[k]   =pose_matrix[k]*w->weight;
+                    matsum[k+4] =pose_matrix[k+4]*w->weight;
+                    matsum[k+8] =pose_matrix[k+8]*w->weight;
+                    matsum[k+12]=pose_matrix[k+12]*w->weight;
+#                   endif
                 }
-#               elif CHA_VERTEX_SKINNING_APPROACH==2
-                // initialize matsum
-                {
-                    w = &mesh->weights[inw+0];
-                    CHA_ASSERT(w->bone_idx>0);
-                    pose_matrix = &p->pose_matrices[CHA_BONE_SPACE_SKINNING][16*w->bone_idx];
-                    wsum+=w->weight;
-                    for (k=0;k<3;k++)   {
-                        matsum[k]   =pose_matrix[k]*w->weight;
-                        matsum[k+4] =pose_matrix[k+4]*w->weight;
-                        matsum[k+8] =pose_matrix[k+8]*w->weight;
-                        matsum[k+12]=pose_matrix[k+12]*w->weight;
-                    }
-                }
-#               endif
-                for (j=startj;j<NUM_WEIGHT_PER_VERTEX;j++)   {
+                // accumulate all other weights (j>0)
+                for (j=1;j<NUM_WEIGHT_PER_VERTEX;j++)   {
                     w = &mesh->weights[inw+j];
                     if (w->bone_idx<0) {/*CHA_ASSERT(j>0);*/break;}
                     CHA_ASSERT(w->bone_idx!=0); /* root is not a deform-bone */
@@ -3677,7 +3666,7 @@ void cha_mesh_instance_update_vertices(struct cha_mesh_instance* p)    {
                     wsum+=w->weight;
                     for (k=0;k<3;k++)   {
 #                       if CHA_VERTEX_SKINNING_APPROACH==1
-                        // We use unwrapped chm_Mat4MulPosf(...) and chm_Mat4MulDirf(...) here (simpler, slower and naive approach to software skinning)
+                        // We use unwrapped chm_Mat4MulPosf(...) and chm_Mat4MulDirf(...) here (simpler and naive approach to software skinning)
                         v[k] += (vc[0]*pose_matrix[k] + vc[1]*pose_matrix[k+4] + vc[2]*pose_matrix[k+8] + pose_matrix[k+12])*w->weight;
                         n[k] += (nc[0]*pose_matrix[k] + nc[1]*pose_matrix[k+4] + nc[2]*pose_matrix[k+8])*w->weight;
 #                       elif CHA_VERTEX_SKINNING_APPROACH==2
@@ -3688,9 +3677,10 @@ void cha_mesh_instance_update_vertices(struct cha_mesh_instance* p)    {
 #                       endif
                     }
                 }
-
 #               if CHA_VERTEX_SKINNING_APPROACH==2
+                // Here we calculate v, n (and tg if present) in one shot
                 for (k=0;k<3;k++)   {
+                    // We use unwrapped chm_Mat4MulPosf(...) and chm_Mat4MulDirf(...)
                     v[k] = vc[0]*matsum[k] + vc[1]*matsum[k+4] + vc[2]*matsum[k+8] + matsum[k+12];
                     n[k] = nc[0]*matsum[k] + nc[1]*matsum[k+4] + nc[2]*matsum[k+8];
                 }
@@ -3698,7 +3688,6 @@ void cha_mesh_instance_update_vertices(struct cha_mesh_instance* p)    {
 
                 //chm_Vec3Normalizef(n);    /* optional */
                 CHA_ASSERT(fabs(wsum-1.f)<0.001f);
-                //memset(p->norms,0,3*mesh->num_verts*sizeof(float));   // no normals
             }
         }
 #       undef NUM_WEIGHT_PER_VERTEX
