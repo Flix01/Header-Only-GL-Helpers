@@ -773,7 +773,7 @@ void InitGL(void) {
 #   endif
 
     Character_Init();
-    group = Character_CreateGroup(3,3,1.85f,1.75f);
+    group = Character_CreateGroup(3,3,1.85f,1.75f,  0.0115f,1,0.04f);
     CHA_ASSERT(group && group->num_men>0 && group->num_ladies>0);   // they are used in the demo
 
     InitShadowPass();
@@ -782,25 +782,8 @@ void InitGL(void) {
     // Please note that after InitGL(), this implementation calls ResizeGL(...,...).
     // If you copy/paste this code you can call it explicitly...
 
-    // Test to remove: leg-strtching to make it taller
-    /*{
-        struct cha_character_instance* instance = &group->instances[CHA_CHARACTER_INSTANCE_MAN_NAME_PETER];
-        struct cha_mesh_instance* mi = &instance->mesh_instances[CHA_MESH_NAME_MAN];
-        const struct cha_armature* armature = mi->armature;
-        int i;
-        for (i=0;i<armature->num_bones;i++) {
-            if (i == CHA_BONE_NAME_LOWERLEG_ANKLE_L || i == CHA_BONE_NAME_LOWERLEG_ANKLE_R)    {
-                float* m = &mi->pose_matrices[CHA_BONE_SPACE_BONE][i*16];
-                struct cha_mesh_instance_pose_data* pose_data = &mi->pose_data[i];
-                m[13]=0.04f;pose_data->tra_dirty = 2;   // 2 means 'dirty from 'bone space matrix'' (1 means 'dirty from 'pose_data'')
-            }
-            else if (i == CHA_BONE_NAME_ANKLE_FOOT_L || i == CHA_BONE_NAME_ANKLE_FOOT_R)    {
-                float* m = &mi->pose_matrices[CHA_BONE_SPACE_BONE][i*16];
-                struct cha_mesh_instance_pose_data* pose_data = &mi->pose_data[i];
-                m[13]=0.06f;pose_data->tra_dirty = 2;    // 2 means 'dirty from 'bone space matrix'' (1 means 'dirty from 'pose_data'')
-            }
-        }
-    }*/
+    // leg-strtching to make character taller
+    //cha_character_instance_set_vertical_stretching(&group->instances[1]/*&group->men[CHA_CHARACTER_INSTANCE_MAN_NAME_PETER]*/,0.5f);
 
     /*{   // optional:
         struct cha_character_instance* peter = &group->instances[CHA_CHARACTER_INSTANCE_MAN_NAME_PETER];
@@ -945,7 +928,7 @@ void CharacterGroupMoveAndAnimate(float totalTimeSeconds,float frameTimeSeconds)
         for (j=1;j<4;j++)   {
             float* m = &mi->pose_matrices[CHA_BONE_SPACE_BONE][j*16];
             struct cha_mesh_instance_pose_data* pose_data = &mi->pose_data[j];
-            chm_Mat4Identity(m);
+            chm_Mat4ClearRotation(m);
             chm_Mat4Rotate(m,amount,0.f,0.f,1.f);
             pose_data->rot_dirty = 2;   // 2 means that we have updated 'pose_matrices[CHA_BONE_SPACE_BONE]'; 1 that we have updated 'pose_data' directly
         }*/

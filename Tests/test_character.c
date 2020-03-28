@@ -301,7 +301,7 @@ void InitGL(void) {
     //-----------------------------------------------------------------------
     // IMPORTANT_CALL--------------------------------------------------------
     Character_Init();
-    group = Character_CreateGroup(3,3,1.85f,1.75f);
+    group = Character_CreateGroup(3,3,1.85f,1.75f,      0.0115f,1,0.04f);
     //-----------------------------------------------------------------------
     // (don't copy this)
     CHA_ASSERT(group && group->num_men>0 && group->num_ladies>0);   // they are used in the demo
@@ -598,7 +598,7 @@ void CharacterGroupMoveAndAnimate(float totalTimeSeconds,float frameTimeSeconds)
             if (mi->selected_bone_mask&(1U<<j))    {
             float* m = &mi->pose_matrices[CHA_BONE_SPACE_BONE][j*16];
             struct cha_mesh_instance_pose_data* pose_data = &mi->pose_data[j];
-            chm_Mat4Identityf(m);
+            chm_Mat4ClearRotationf(m);
             chm_Mat4Rotatef(m,amount,0.f,0.f,1.f);
             pose_data->rot_dirty = 2;   // 2 means that we have updated 'pose_matrices[CHA_BONE_SPACE_BONE]'; 1 that we have updated 'pose_data' directly        
             }

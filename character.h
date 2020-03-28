@@ -67,7 +67,7 @@ static struct cha_character_group* group = NULL;    // global
 void InitGL(void) {
     ...
     Character_Init();
-    group = Character_CreateGroup(3,3,1.85f,1.75f);
+    group = Character_CreateGroup(3,3,1.85f,1.75f,  0.f,1,0.f);
     ...
 }
 void DestroyGL(void)    {
@@ -118,7 +118,7 @@ A POSSIBLE ROADMAP:
 #define CHARACTER_H_
 
 #define CHA_VERSION               "0.1 ALPHA"
-#define CHA_VERSION_NUM           0002
+#define CHA_VERSION_NUM           0003
 
 #ifndef CHA_API_INL
 #   define CHA_API_INL __inline
@@ -187,7 +187,13 @@ typedef float choat;
 CHA_API_DEC void Character_Init(void);
 CHA_API_DEC void Character_Destroy(void);
 
-CHA_API_DEC struct cha_character_group* Character_CreateGroup(int num_men,int num_ladies,float men_scaling,float ladies_scaling);
+/* Last 3 arguments are:
+    'random_scaling_fraction'    // if >0.f adds a small uniform scale variability. [suggested value: 0.0115f that scales +-2cm on a base scale of 1.75m (not very noticeable)]
+    'add_some_optional_meshes'   // [0 or 1] aads some hats, glasses, etc.
+    'random_vertical_stretching_fraction_experimental'  // if >0.f makes some characters a bit taller. [suggested value: 0.f, but if you really want to try it use 0.04f (not very noticeable)].
+                                                        // Experimental: some artifacts can appear. USE IT AT YOUR OWN RISK.
+*/
+CHA_API_DEC struct cha_character_group* Character_CreateGroup(int num_men,int num_ladies,float men_scaling,float ladies_scaling,float random_scaling_fraction/*=0.f*/,int add_some_optional_meshes/*=1*/,float random_vertical_stretching_fraction_experimental/*=0.f*/);
 CHA_API_DEC void Character_DestroyGroup(struct cha_character_group* p);
 
 
@@ -257,6 +263,7 @@ enum ChaCharacterInstanceLadyNameEnum {
 #   define chm_Vec3DistSquared(X,Y)         chm_Vec3DistSquaredf(X,Y)
 #   define chm_Vec3Dist(X,Y)                chm_Vec3Distf(X,Y)
 #   define chm_Mat4Identity(X)              chm_Mat4Identityf(X)
+#   define chm_Mat4ClearRotation(X)         chm_Mat4ClearRotationf(X)
 #   define chm_Mat4Copy(X,Y)                chm_Mat4Copyf(X,Y)
 #   define chm_Mat4MulUncheckArgs(X,Y,Z)    chm_Mat4MulUncheckArgsf(X,Y,Z)
 #   define chm_Mat4Mul(X,Y,Z)               chm_Mat4Mulf(X,Y,Z)
@@ -297,6 +304,7 @@ enum ChaCharacterInstanceLadyNameEnum {
 #   define chm_Vec3DistSquared(X,Y)         chm_Vec3DistSquaredd(X,Y)
 #   define chm_Vec3Dist(X,Y)                chm_Vec3Distd(X,Y)
 #   define chm_Mat4Identity(X)              chm_Mat4Identityd(X)
+#   define chm_Mat4ClearRotation(X)         chm_Mat4ClearRotationd(X)
 #   define chm_Mat4Copy(X,Y)                chm_Mat4Copyd(X,Y)
 #   define chm_Mat4MulUncheckArgs(X,Y,Z)    chm_Mat4MulUncheckArgsd(X,Y,Z)
 #   define chm_Mat4Mul(X,Y,Z)               chm_Mat4Muld(X,Y,Z)
@@ -371,6 +379,8 @@ CHA_API_INL float chm_Roundd(double number)	{return number < 0.0 ? ceil(number -
 
 CHA_API_INL float* chm_Mat4Identityf(float* CHA_RESTRICT result16) {float* m = result16;m[0]=m[5]=m[10]=m[15]=1.f;m[1]=m[2]=m[3]=m[4]=m[6]=m[7]=m[8]=m[9]=m[11]=m[12]=m[13]=m[14]=0.f;return result16;}
 CHA_API_INL double* chm_Mat4Identityd(double* CHA_RESTRICT result16) {double* m = result16;m[0]=m[5]=m[10]=m[15]=1.0;m[1]=m[2]=m[3]=m[4]=m[6]=m[7]=m[8]=m[9]=m[11]=m[12]=m[13]=m[14]=0.0;return result16;}
+CHA_API_INL float* chm_Mat4ClearRotationf(float* CHA_RESTRICT result16) {float* m = result16;m[0]=m[5]=m[10]=m[15]=1.f;m[1]=m[2]=m[3]=m[4]=m[6]=m[7]=m[8]=m[9]=m[11]=0.f;return result16;}
+CHA_API_INL double* chm_Mat4ClearRotationd(double* CHA_RESTRICT result16) {double* m = result16;m[0]=m[5]=m[10]=m[15]=1.0;m[1]=m[2]=m[3]=m[4]=m[6]=m[7]=m[8]=m[9]=m[11]=0.0;return result16;}
 CHA_API_INL void chm_Mat4Copyf(float* CHA_RESTRICT dst16,const float* CHA_RESTRICT src16) {memcpy(dst16,src16,16*sizeof(float));}
 CHA_API_INL void chm_Mat4Copyd(double* CHA_RESTRICT dst16,const double* CHA_RESTRICT src16) {memcpy(dst16,src16,16*sizeof(double));}
 CHA_API_DEC float* chm_Mat4MulUncheckArgsf(float* CHA_RESTRICT result16,const float* CHA_RESTRICT ml16,const float* CHA_RESTRICT mr16);
@@ -613,6 +623,8 @@ extern void chm_Mat4Convertd2f(float* CHA_RESTRICT result16,const double* CHA_RE
 extern void chm_Mat4Convertf2d(double* CHA_RESTRICT result16,const float* CHA_RESTRICT m16);
 extern float* chm_Mat4Identityf(float* CHA_RESTRICT result16);
 extern double* chm_Mat4Identityd(double* CHA_RESTRICT result16);
+extern float* chm_Mat4ClearRotationf(float* CHA_RESTRICT result16);
+extern double* chm_Mat4ClearRotationd(double* CHA_RESTRICT result16);
 extern void chm_Mat4Copyf(float* CHA_RESTRICT dst16,const float* CHA_RESTRICT src16);
 extern void chm_Mat4Copyd(double* CHA_RESTRICT dst16,const double* CHA_RESTRICT src16);
 CHA_API_DEF float* chm_Mat4MulUncheckArgsf(float* CHA_RESTRICT result16,const float* CHA_RESTRICT ml16,const float* CHA_RESTRICT mr16) {
@@ -2959,6 +2971,7 @@ struct cha_mesh_instance {
 
     /* skeletal animation stuff (if 'armature'!=NULL) */
     float *verts,*norms;            /* size=mesh->num_verts; buffer for the animated verts/norms */
+    float vertical_stretching;  // positive (default: 0.f) read-only (set by void cha_mesh_instance_set_vertical_stretching(...)
 
     /* shape keys animation stuff (if mesh->shape_keys!=NULL) */
     int shk_values_dirty;                  /* when manually modifying any 'shk_values', we must turn on this flag */
@@ -2980,6 +2993,81 @@ struct cha_mesh_instance {
     CHA_MESH_INSTANCE_USER_CODE
 #   endif
 };
+void cha_mesh_instance_set_vertical_stretching(struct cha_mesh_instance* p,float vertical_stretching)  {
+    // Experimental: to make single characters taller
+    /* To make single characters taller changing instance->scaling[1] is not correct because it's applied AFTER animations
+       This should be better. But:
+        -> it breaks some animation (e.g. in CHA_ARMATURE_ACTION_NAME_POSE_SIT_DOWN the feet stand in mid-air).
+        -> bone bending looks worse.
+        -> the character aabb is not scaled, so, in order to make all possible animations fit inside the (displayed) AABB,
+            user could set the definitions: CHA_AABB_BODY_SCALING_X,CHA_AABB_BODY_SCALING_Y,CHA_AABB_BODY_SCALING_Z properly ay project level.
+            This are the defaults (at the time of writing) from character.h:
+            #   ifndef CHA_AABB_BODY_SCALING_X
+            #       define CHA_AABB_BODY_SCALING_X (1.2f)
+            #   endif
+            #   ifndef CHA_AABB_BODY_SCALING_Y
+            #       define CHA_AABB_BODY_SCALING_Y (1.75f)
+            #   endif
+            #   ifndef CHA_AABB_BODY_SCALING_Z
+            #       define CHA_AABB_BODY_SCALING_Z (6.f)
+            #   endif
+
+       Generally speaking, it's better to uniform-scale single characters using instance->scaling[0]=instance->scaling[1]=instance->scaling[2]=scale.
+       This is what Character_CreateGroup(...) does, without any side-effect.
+       So please use this method wisely at your own risk.
+    */
+    const struct cha_armature* armature = p->armature;
+    int i;unsigned bone_mask;
+    CHA_ASSERT(armature);
+    CHA_ASSERT(vertical_stretching>=0.f);
+    p->vertical_stretching = vertical_stretching;
+    for (i=1;i<armature->num_bones;i++) {
+        const struct cha_armature_bone* b = &armature->bones[i];
+        struct cha_mesh_instance_pose_data* pose_data = &p->pose_data[i];
+        float* m = &p->pose_matrices[CHA_BONE_SPACE_BONE][i*16];
+        bone_mask = 1<<i;
+        if (bone_mask&(CHA_BONE_MASK_LOWERLEG_ANKLE_L|CHA_BONE_MASK_LOWERLEG_ANKLE_R))    {
+            m[13]=0.4f*vertical_stretching;pose_data->tra_dirty = 2;   // 2 means 'dirty from 'bone space matrix'' (1 means 'dirty from 'pose_data'')
+        }
+        else if (bone_mask&(CHA_BONE_MASK_ANKLE_FOOT_L|CHA_BONE_MASK_ANKLE_FOOT_R))    {
+            m[13]=0.6f*vertical_stretching;pose_data->tra_dirty = 2;    // 2 means 'dirty from 'bone space matrix'' (1 means 'dirty from 'pose_data'')
+        }
+        else if (bone_mask&(CHA_BONE_MASK_BODY_NECK))   {
+            m[13]=0.275f*vertical_stretching;pose_data->tra_dirty = 2;
+        }
+        else if (bone_mask&(CHA_BONE_MASK_NECK_HEAD))   {
+            m[13]=0.05f*vertical_stretching;pose_data->tra_dirty = 2;
+        }
+        else if (bone_mask&(CHA_BONE_MASK_UPPERARM_LOWERARM_L))   {
+            m[12]=0.2f*vertical_stretching;
+            m[13]=0.02f*vertical_stretching;
+            pose_data->tra_dirty = 2;
+        }
+        else if (bone_mask&(CHA_BONE_MASK_UPPERARM_LOWERARM_R))   {
+            m[12]=-0.2f*vertical_stretching;
+            m[13]=0.02f*vertical_stretching;
+            pose_data->tra_dirty = 2;
+        }
+        else if (bone_mask&(CHA_BONE_MASK_LOWERARM_WRIST_L|CHA_BONE_MASK_LOWERARM_WRIST_R))   {
+            m[13]=0.25f*vertical_stretching;pose_data->tra_dirty = 2;
+        }
+        else if (bone_mask&(CHA_BONE_MASK_HANDS&(~(CHA_BONE_MASK_HAND1_L|CHA_BONE_MASK_HAND1_R))))   {
+            m[13]=0.15f*vertical_stretching;pose_data->tra_dirty = 2;
+        }
+        else if (bone_mask&(CHA_BONE_MASK_HANDS))   {
+            m[13]=0.015f*vertical_stretching;pose_data->tra_dirty = 2;
+        }
+        // TODO: stretch other bones
+
+        //--------------------------------------------
+        if (b->parent_idx==CHA_BONE_NAME_ROOT) {
+            // Mandatory to lift the legs
+            if (i==CHA_BONE_NAME_PELVIS_BODY) m[13]+=1.2f*vertical_stretching;
+            else m[13]-=vertical_stretching;
+            pose_data->tra_dirty=2;
+        }
+    }
+}
 void cha_mesh_instance_reset_pose(struct cha_mesh_instance* p)   {
     int i,j;
     CHA_ASSERT(p->armature && p->pose_matrices[0] && p->pose_matrices[1] && p->pose_matrices[2] && p->pose_matrices[3] && p->pose_data);
@@ -3005,6 +3093,7 @@ void cha_mesh_instance_reset_pose(struct cha_mesh_instance* p)   {
             else {m16[0]=m16[5]=m16[10]=m16[15]=1.f;}
         }
     }
+    if (p->vertical_stretching!=0.f) cha_mesh_instance_set_vertical_stretching(p,p->vertical_stretching);
 }
 void cha_mesh_instance_reset_shape_key_pose(struct cha_mesh_instance* p)    {
     const struct cha_mesh* mesh = p->mesh;
@@ -3468,7 +3557,7 @@ void cha_mesh_instance_update_bone_matrix(struct cha_mesh_instance* p,int bone_i
            CHA_BONE_SPACE_ARMATURE = CHA_BONE_SPACE_SKINNING * b->data[CHA_BONE_SPACE_ARMATURE].matrix;
            so that: CHA_BONE_SPACE_SKINNING = CHA_BONE_SPACE_ARMATURE * b->data[CHA_BONE_SPACE_ARMATURE].matrix_inv;
         */
-        int i;
+        int i;//int is_bone_affected_by_vertical_stretching=0;
         const struct cha_armature* armature = p->armature;
         const struct cha_armature_bone* b = &armature->bones[bone_idx];
         struct cha_mesh_instance_pose_data* pose_data = &p->pose_data[bone_idx];
@@ -3494,6 +3583,7 @@ void cha_mesh_instance_update_bone_matrix(struct cha_mesh_instance* p,int bone_i
                 }
             }
             if (pose_data->tra_dirty>0 && pose_data->tra_dirty<3)    {
+                //is_bone_affected_by_vertical_stretching = p->vertical_stretching!=0.f && b->parent_idx==CHA_BONE_NAME_ROOT;
                 CHA_ASSERT(pose_data->tra_dirty==1 || pose_data->tra_dirty==2);
                 if (pose_data->tra_dirty==1) {
                     for (i=0;i<3;i++) pose_matrix_bone_space[12+i]=pose_data->tra[i];
@@ -3504,6 +3594,12 @@ void cha_mesh_instance_update_bone_matrix(struct cha_mesh_instance* p,int bone_i
                     pose_data->tra_dirty=3; /* we use the private value 3 to defer the line above only when necessary */
                 }
 
+                /*// p->vertical_stretching support
+                if (is_bone_affected_by_vertical_stretching)    {
+                    // Note that we've assured that 'pose_matrix_bone_space[13]' is up to date (see above)
+                    if (bone_idx==CHA_BONE_NAME_PELVIS_BODY) pose_matrix_bone_space[13]+=p->vertical_stretching;
+                    else pose_matrix_bone_space[13]-=p->vertical_stretching;
+                }*/
             }
 
             /* what we're doing here is to update our 'pose_matrix_armature_space' using 'pose informations' */
@@ -3775,7 +3871,6 @@ void cha_character_instance_destroy(struct cha_character_instance* p)   {
     p->parent_group=NULL;
 }
 
-
 void cha_character_instance_draw(const struct cha_character_instance* inst,int no_materials/*=0*/,int mesh_name_mask_to_exclude/*=0*/,void (*mesh_instance_draw_callback)(const struct cha_mesh_instance* mi,const float* mvMatrix16,int no_materials/*=0*/,void* user_data/*=NULL*/),void* user_data) {
     int mi_idx;int use_parent_offset_matrix_link = 0;
     CHA_ASSERT(mesh_instance_draw_callback);
@@ -3832,6 +3927,7 @@ void cha_character_group_updateMatrices(struct cha_character_group** pp,int num_
             if (inst->active)   {
                 inst->culled = 0;
                 tm[0]=inst->scaling[0];tm[6]=-inst->scaling[2];tm[9]=inst->scaling[1];
+                //tm[13]=inst->vertical_stretching*inst->scaling[1];   // test (wrong!)
 
 #               ifdef CHA_DOUBLE_PRECISION
                 chm_Mat4MulUncheckArgsd(mMatrixOut,inst->mMatrixIn,tm); // (with so many zeros we can do better...)
@@ -3871,9 +3967,9 @@ void cha_character_group_updateMatrices(struct cha_character_group** pp,int num_
                     cha_mesh_instance_update_bone_matrix(mi,0,0);   // updates root bone animation only (if necessary) and modifies mi->pose_bone_mask.
 
                     chm_Mat4MulUncheckArgsf(inst->mvMatrixOut,mvMatrixWithoutRootBoneOut,gMatrix);
+
                     // There's still a Z offset (b->length) that must be appended here, why?
                     chm_Mat4Translatef(inst->mvMatrixOut,0.f,b->length,0.f);
-
 
                     if (pMatrixNormalizedFrustumPlanesOrNull)   {
                         inst->culled = mi->culled = chm_IsOBBVisiblef(pMatrixNormalizedFrustumPlanesOrNull,inst->mvMatrixOut,mesh->aabb_min[0],mesh->aabb_min[1],mesh->aabb_min[2],mesh->aabb_max[0],mesh->aabb_max[1],mesh->aabb_max[2]) ? 0 : 1;
@@ -4151,7 +4247,7 @@ void cha_private_copy_material_from_color(struct cha_material* m,unsigned rgba,f
     }
 }
 
-void cha_character_group_init(struct cha_character_group* p,int num_men,int num_ladies,float men_scaling,float ladies_scaling) {
+void cha_character_group_init(struct cha_character_group* p,int num_men,int num_ladies,float men_scaling,float ladies_scaling,float random_scaling_fraction/*=0.f*/,int add_some_optional_meshes/*=1*/,float random_vertical_stretching_fraction/*=0.f*/) {
     const char* male_names[]={"Peter","John","Andrew","James","Philip","Thomas","Matthew","Simon","Bartholomew","Jude",
                               "Matthias","Joseph","Paul","Stephen","Francis","Benedict","Joachim","Charles","Augustine","Dominic"};
     const char* female_names[]={"Mary","Anne","Martha","Susan","Joan","Lucy","Catherine","Margaret","Elizabeth","Theresa",
@@ -4206,6 +4302,7 @@ void cha_character_group_init(struct cha_character_group* p,int num_men,int num_
 #   ifndef CHA_NO_CHARACTER_INSTANCE_NAMES
     CHA_ASSERT((int)CHA_CHARACTER_INSTANCE_MAN_NAME_COUNT==(int)CHA_CHARACTER_INSTANCE_LADY_NAME_COUNT && CHA_CHARACTER_INSTANCE_MAN_NAME_COUNT==num_male_names);
 #   endif
+    CHA_ASSERT(random_vertical_stretching_fraction>=0.f);
     p->num_instances=num_instances;
     p->instances = (struct cha_character_instance*) cha_malloc(p->num_instances*sizeof(struct cha_character_instance));
     p->num_men=num_men;p->num_ladies=num_ladies;
@@ -4214,7 +4311,9 @@ void cha_character_group_init(struct cha_character_group* p,int num_men,int num_
     if (p->num_instances<=6) step_radius+=step_radius*0.1f*p->num_instances;
     for (i=0;i<p->num_instances;i++)    {
         const int is_man = i<p->num_men?1:0;
-        const char* name = is_man ? male_names[i%num_male_names] : female_names[(i-p->num_men)%num_female_names];
+        const int gen_idx = is_man ? i : (i-p->num_men);
+        const int gen_name_idx = is_man ? (gen_idx%num_male_names) : (gen_idx%num_female_names);
+        const char* name = is_man ? male_names[gen_name_idx] : female_names[gen_name_idx];
         struct cha_character_instance* inst = &p->instances[i];
         choat* m = inst->mMatrixIn;
         const int interleaved_idx = is_man ?
@@ -4222,16 +4321,33 @@ void cha_character_group_init(struct cha_character_group* p,int num_men,int num_
                     (i-p->num_men)<p->num_men ? (((i-p->num_men)*2+1)) : (((p->num_men)*2+(i-2*p->num_men)))
                     ;
         const int mtl_idx = (is_man ? (i+(CHA_CHARACTER_GROUP_INIT_NUM_COLORS/2+1)) : (i-p->num_men))%CHA_CHARACTER_GROUP_INIT_NUM_COLORS;
-        const int has_hat = (mtl_idx%4==2)?1:0, has_glasses= (mtl_idx%3==1)?1:0;
         const choat sina = sin(angle),cosa = cos(angle);
+        float sing,sing2g;
+        float scaling = is_man ? men_scaling : ladies_scaling;
         cha_character_instance_init(inst,name,i<p->num_men?0:1);
         inst->parent_group = p;inst->group_idx=i;
 
-        if (is_man) {inst->scaling[0]=inst->scaling[1]=inst->scaling[2]=men_scaling;}
-        else {inst->scaling[0]=inst->scaling[1]=inst->scaling[2]=ladies_scaling;}
 
-        if (has_hat)        inst->mesh_instances[CHA_MESH_NAME_HAT].active=1;
-        if (has_glasses)    inst->mesh_instances[CHA_MESH_NAME_GLASSES].active=1;
+        if (random_scaling_fraction!=0.f)    {
+            sing2g = sin(2.5f+2.f*(float)gen_idx);
+            scaling+=random_scaling_fraction/*0.0115f*/*sing2g*scaling;
+        }
+        inst->scaling[0]=inst->scaling[1]=inst->scaling[2]=scaling;
+        if (random_vertical_stretching_fraction>=0.f)    {
+            sing = sin((float)gen_idx);
+            if (sing>0.f) cha_mesh_instance_set_vertical_stretching(&inst->mesh_instances[CHA_MESH_NAME_BODY],random_vertical_stretching_fraction/*0.04f*/*sing);
+        }
+
+        if (add_some_optional_meshes)   {
+            const int has_hat = (mtl_idx%4==2)?1:0, has_glasses= (mtl_idx%3==1)?1:0, has_covid_mask = (mtl_idx%5==3)?1:0;
+            if (has_hat)        inst->mesh_instances[CHA_MESH_NAME_HAT].active=1;
+            if (has_glasses)    inst->mesh_instances[CHA_MESH_NAME_GLASSES].active=1;
+            if (has_covid_mask) {
+                inst->mesh_instances[CHA_MESH_NAME_COVID_MASK].active=1;
+                inst->mesh_instances[CHA_MESH_NAME_MOUTH].active=0;
+            }
+        }
+
 
         // positions
         CHA_ASSERT(interleaved_idx<p->num_instances);
@@ -4279,6 +4395,7 @@ CHA_API_DEF void Character_Init(void) {
     cha_mesh_init_mouth(&gCharacterMeshes[CHA_MESH_NAME_MOUTH]);
     cha_mesh_init_hat(&gCharacterMeshes[CHA_MESH_NAME_HAT]);
     cha_mesh_init_glasses(&gCharacterMeshes[CHA_MESH_NAME_GLASSES]);
+    cha_mesh_init_covid_mask(&gCharacterMeshes[CHA_MESH_NAME_COVID_MASK]);
 
     cha_materials_init_names(&gMaterialNames);   /* this doesn't need destruction */
 
@@ -4296,9 +4413,9 @@ CHA_API_DEF void Character_Destroy(void)  {
     for (i=0;i<CHA_ARMATURE_NAME_COUNT;i++) cha_armature_destroy(&gCharacterArmatures[i]);
 }
 
-CHA_API_DEF struct cha_character_group* Character_CreateGroup(int num_men,int num_ladies,float men_scaling,float ladies_scaling) {
+CHA_API_DEF struct cha_character_group* Character_CreateGroup(int num_men,int num_ladies,float men_scaling,float ladies_scaling,float random_scaling_fraction/*=0.f*/,int add_some_optional_meshes/*=1*/,float random_vertical_stretching_fraction_experimental/*=0.f*/) {
     struct cha_character_group* p = (struct cha_character_group*) cha_malloc(sizeof(struct cha_character_group));
-    cha_character_group_init(p,num_men,num_ladies,men_scaling,ladies_scaling);return p;
+    cha_character_group_init(p,num_men,num_ladies,men_scaling,ladies_scaling,random_scaling_fraction,add_some_optional_meshes,random_vertical_stretching_fraction_experimental);return p;
 }
 CHA_API_DEF void Character_DestroyGroup(struct cha_character_group* p) {
     if (p)    {cha_character_group_destroy(p);cha_free(p);}
