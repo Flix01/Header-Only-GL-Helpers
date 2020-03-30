@@ -118,7 +118,7 @@ A POSSIBLE ROADMAP:
 #define CHARACTER_H_
 
 #define CHA_VERSION               "0.1 ALPHA"
-#define CHA_VERSION_NUM           0003
+#define CHA_VERSION_NUM           0004
 
 #ifndef CHA_API_INL
 #   define CHA_API_INL __inline
@@ -2968,6 +2968,7 @@ struct cha_mesh_instance {
     float* pose_matrices[4];   /* size = armature->num_bones*16. */
     struct cha_mesh_instance_pose_data* pose_data;       /* size = armature->num_bones */
     unsigned pose_bone_mask;    /* bone mask of the currently affected bones */
+    unsigned pose_bone_exclude_mask;    /* user can set/reset it, so that all animations do not affect these bones (handy e.g. when hand is grabbing something). Ignored in manual animations. */
 
     /* skeletal animation stuff (if 'armature'!=NULL) */
     float *verts,*norms;            /* size=mesh->num_verts; buffer for the animated verts/norms */
@@ -3389,6 +3390,7 @@ float cha_mesh_instance_calculate_bone_space_pose_matrices_from_action_ex(struct
     float animation_time=0.f;
     int i,j,looping=0,is_first_loop = 0;
     int must_mix_with_another_action = 0;
+    bone_exclude_mask|=p->pose_bone_exclude_mask;   // user can set/reset it
     CHA_ASSERT(armature && action_index>=0 && armature->num_actions>action_index);
     if (bone_start_idx<0) bone_start_idx=0;
     if (num_bones_to_process<0) num_bones_to_process=armature->num_bones-bone_start_idx;
@@ -3541,8 +3543,8 @@ float cha_mesh_instance_calculate_bone_space_pose_matrices_from_action_ex(struct
 
     return animation_time;  /* returns fmod(global_animation_time,action->max_frame_time) for looping animations */
 }
-CHA_API_INL float cha_mesh_instance_calculate_bone_space_pose_matrices_from_action(struct cha_mesh_instance* p,int action_index,float global_animation_time,float additional_time_to_get_to_first_frame)  {
-    return cha_mesh_instance_calculate_bone_space_pose_matrices_from_action_ex(p,action_index,global_animation_time,additional_time_to_get_to_first_frame,1.f,-1,0,-1,0);
+CHA_API_INL float cha_mesh_instance_calculate_bone_space_pose_matrices_from_action(struct cha_mesh_instance* p,int action_index,float global_animation_time,float additional_time_to_get_to_first_frame,unsigned bone_exclude_mask)  {
+    return cha_mesh_instance_calculate_bone_space_pose_matrices_from_action_ex(p,action_index,global_animation_time,additional_time_to_get_to_first_frame,1.f,-1,0,-1,bone_exclude_mask);
 }
 void cha_mesh_instance_update_bone_matrix(struct cha_mesh_instance* p,int bone_idx,int recursive) {
     //p->pose_bone_mask = 0;    /* well, this must be reset BEFORE calling this method (multiple times) */
@@ -4339,12 +4341,23 @@ void cha_character_group_init(struct cha_character_group* p,int num_men,int num_
         }
 
         if (add_some_optional_meshes)   {
-            const int has_hat = (mtl_idx%4==2)?1:0, has_glasses= (mtl_idx%3==1)?1:0, has_covid_mask = (mtl_idx%5==3)?1:0;
+            const int has_hat = (mtl_idx%4==2)?1:0, has_glasses= (mtl_idx%3==1)?1:0, has_covid_mask = (mtl_idx%5==3)?1:0, has_suitcase_right = ((mtl_idx%4==3)?1:0), has_suitcase_left = ((mtl_idx%9==4)?1:0);
+            struct cha_mesh_instance* mi = &inst->mesh_instances[CHA_MESH_NAME_BODY];
             if (has_hat)        inst->mesh_instances[CHA_MESH_NAME_HAT].active=1;
             if (has_glasses)    inst->mesh_instances[CHA_MESH_NAME_GLASSES].active=1;
             if (has_covid_mask) {
                 inst->mesh_instances[CHA_MESH_NAME_COVID_MASK].active=1;
                 inst->mesh_instances[CHA_MESH_NAME_MOUTH].active=0;
+            }
+            if (has_suitcase_right) {
+                inst->mesh_instances[CHA_MESH_NAME_SUITCASE_RIGHT].active=1;
+                cha_mesh_instance_calculate_bone_space_pose_matrices_from_action(mi,CHA_ARMATURE_ACTION_NAME_POSE_HANDS_CLOSED,10.f,0.f,CHA_BONE_MASK_HAND_L);
+                mi->pose_bone_exclude_mask|=CHA_BONE_MASK_HAND_R;
+            }
+            if (has_suitcase_left) {
+                inst->mesh_instances[CHA_MESH_NAME_SUITCASE_LEFT].active=1;
+                cha_mesh_instance_calculate_bone_space_pose_matrices_from_action(mi,CHA_ARMATURE_ACTION_NAME_POSE_HANDS_CLOSED,10.f,0.f,CHA_BONE_MASK_HAND_R);
+                mi->pose_bone_exclude_mask|=CHA_BONE_MASK_HAND_L;
             }
         }
 
@@ -4396,6 +4409,7 @@ CHA_API_DEF void Character_Init(void) {
     cha_mesh_init_hat(&gCharacterMeshes[CHA_MESH_NAME_HAT]);
     cha_mesh_init_glasses(&gCharacterMeshes[CHA_MESH_NAME_GLASSES]);
     cha_mesh_init_covid_mask(&gCharacterMeshes[CHA_MESH_NAME_COVID_MASK]);
+    cha_mesh_init_suitcases(&gCharacterMeshes[CHA_MESH_NAME_SUITCASE_RIGHT],&gCharacterMeshes[CHA_MESH_NAME_SUITCASE_LEFT]);
 
     cha_materials_init_names(&gMaterialNames);   /* this doesn't need destruction */
 

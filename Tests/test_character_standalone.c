@@ -958,8 +958,8 @@ void CharacterGroupMoveAndAnimate(float totalTimeSeconds,float frameTimeSeconds)
         const float animation_time=totalTimeSeconds*animation_speed;      // good only for when 'animation_speed' is constant through all the animation time
         //static float animation_time=0;animation_time+=frameTimeSeconds*animation_speed;   // good always
 
-        cha_mesh_instance_calculate_bone_space_pose_matrices_from_action(mi,CHA_ARMATURE_ACTION_NAME_FALL_DOWN,animation_time,additional_time_to_get_to_first_frame);
-        //cha_mesh_instance_calculate_bone_space_pose_matrices_from_action(mi,CHA_ARMATURE_ACTION_NAME_RUN_CYCLE,animation_time,additional_time_to_get_to_first_frame);
+        cha_mesh_instance_calculate_bone_space_pose_matrices_from_action(mi,CHA_ARMATURE_ACTION_NAME_FALL_DOWN,animation_time,additional_time_to_get_to_first_frame,0);
+        //cha_mesh_instance_calculate_bone_space_pose_matrices_from_action(mi,CHA_ARMATURE_ACTION_NAME_RUN_CYCLE,animation_time,additional_time_to_get_to_first_frame,0);
 
     }
 #   endif
@@ -971,7 +971,7 @@ void CharacterGroupMoveAndAnimate(float totalTimeSeconds,float frameTimeSeconds)
         static float animation_time = 0.f;
         animation_time+= (frameTimeSeconds)*character_animation_speed;
         cha_mesh_instance_calculate_bone_space_pose_matrices_from_action_ex(mi,CHA_ARMATURE_ACTION_NAME_CYCLE_RUN,animation_time,additional_time_to_get_to_first_frame,character_animation_walk_run_mix_in_0_1,CHA_ARMATURE_ACTION_NAME_CYCLE_WALK,0,-1,0);//CHA_BONE_MASK_ARMS_AND_HANDS);
-        //cha_mesh_instance_calculate_bone_space_pose_matrices_from_action(mi,CHA_ARMATURE_ACTION_NAME_CYCLE_WALK,animation_time,additional_time_to_get_to_first_frame);
+        //cha_mesh_instance_calculate_bone_space_pose_matrices_from_action(mi,CHA_ARMATURE_ACTION_NAME_CYCLE_WALK,animation_time,additional_time_to_get_to_first_frame,0);
     }
 #   endif
 
@@ -1023,11 +1023,13 @@ void CharacterGroupMoveAndAnimate(float totalTimeSeconds,float frameTimeSeconds)
         const struct cha_armature* armature = peter_mi->armature;   /* all characters share the same armature */
         int anim_idx = 0;
         CHA_ASSERT(armature);
-        if (anim_idx<armature->num_actions && armature->num_actions>2) {
+        if (anim_idx<armature->num_actions && armature->num_actions>4) {
             for (i=0;i<group->num_instances;i++)    {
                 struct cha_character_instance* inst = &group->instances[i];
                 if (inst!=peter && inst!=mary)  {
-                    while (anim_idx==CHA_ARMATURE_ACTION_NAME_CYCLE_RUN || anim_idx==CHA_ARMATURE_ACTION_NAME_CYCLE_WALK) anim_idx=(anim_idx+1)%armature->num_actions;   // we skip these (already shown by peter)
+                    while (anim_idx==CHA_ARMATURE_ACTION_NAME_CYCLE_RUN || anim_idx==CHA_ARMATURE_ACTION_NAME_CYCLE_WALK    // we skip these (already shown by peter)
+                           || anim_idx==CHA_ARMATURE_ACTION_NAME_POSE_HANDS_OPEN || anim_idx==CHA_ARMATURE_ACTION_NAME_POSE_HANDS_CLOSED  // we skip these (affect hands only, not very noticeable)
+                           ) anim_idx=(anim_idx+1)%armature->num_actions;
                     if (inst->active && !inst->culled)  {
                         struct cha_mesh_instance* mi = &inst->mesh_instances[CHA_MESH_NAME_BODY];
                         const struct cha_armature_action* action = &armature->actions[anim_idx];
@@ -1038,7 +1040,7 @@ void CharacterGroupMoveAndAnimate(float totalTimeSeconds,float frameTimeSeconds)
                         //static float animation_time=0;animation_time+=frameTimeSeconds*animation_speed;   // good always
                         if (!action->looping && animation_time>repeat_time) animation_time=fmodf(animation_time,repeat_time);
 
-                        cha_mesh_instance_calculate_bone_space_pose_matrices_from_action(mi,anim_idx,animation_time,additional_time_to_get_to_first_frame);
+                        cha_mesh_instance_calculate_bone_space_pose_matrices_from_action(mi,anim_idx,animation_time,additional_time_to_get_to_first_frame,0);
                     }
                     ++anim_idx;anim_idx%=armature->num_actions;
                 }
@@ -1066,7 +1068,7 @@ void CharacterGroupMoveAndAnimate(float totalTimeSeconds,float frameTimeSeconds)
                     while (anim_idx==CHA_ARMATURE_ACTION_NAME_CYCLE_RUN || anim_idx==CHA_ARMATURE_ACTION_NAME_CYCLE_WALK) anim_idx=(anim_idx+1)%armature->num_actions;   // we skip these (already shown by peter)
                     if (inst->active && !inst->culled)  {
                         struct cha_mesh_instance* mi = &inst->mesh_instances[CHA_MESH_NAME_BODY];
-                        cha_mesh_instance_calculate_bone_space_pose_matrices_from_action(mi,anim_idx,animation_time,additional_time_to_get_to_first_frame);
+                        cha_mesh_instance_calculate_bone_space_pose_matrices_from_action(mi,anim_idx,animation_time,additional_time_to_get_to_first_frame,0);
                     }
                 }
             }
