@@ -93,6 +93,8 @@ NM_USE_MEMCPY                        [impl includes <string.h>] It uses memcpy i
 NM_NO_STDIO                          [excludes <stdio.h> from header] It disables all the "print" functions.
 NM_NO_ASSERT                         Disables NM_ASSERTs
 NM_ASSERT_ON_BAD_QUATERNION_CTR      the quat struct C++ constructor, and the make_quat(...) function (but NOT the C-style init: quat q={{{x,y,z,w}}};), take w as first argument (like glm). To avoid common errors this def can be defined.
+NM_NO_WARNING_SUPPRESSION            by default a few warnings are silenced; with this definition you can see them all.
+NM_NO_C99_MATH_FUNCTIONS             Disables C99 single precision floating point math functions (e.g. sinf, cosf): old compilers might not support them.
 
 ========
 IN CODE:
@@ -120,7 +122,7 @@ TODO:
 #define MINIMATH_H_
 
 #define NM_VERSION               "1.0 WIP"
-#define NM_VERSION_NUM           0005
+#define NM_VERSION_NUM           0006
 
 #ifdef NM_HAS_CFG
 #   include "minimath_cfg.h"
@@ -287,17 +289,26 @@ typedef float nmoat;
 #   endif
 #endif //NM_ASSERT
 
-#ifdef NM_WARNING_SUPPRESSION
+#ifndef COMPILER_SUPPORTS_GCC_DIAGNOSTIC    // We define this
 #   if (defined(__GNUC__) || defined(__MINGW__) || defined(__clang__))
+#       define COMPILER_SUPPORTS_GCC_DIAGNOSTIC
+#   endif
+#endif
+
+#ifndef NM_NO_WARNING_SUPPRESSION
+#   ifdef COMPILER_SUPPORTS_GCC_DIAGNOSTIC
 #       pragma GCC diagnostic push
+#       pragma GCC diagnostic ignored "-Wpragmas"
+#       pragma GCC diagnostic ignored "-Wunknown-warning-option"
 #       pragma GCC diagnostic ignored "-Wmissing-braces"
+#       pragma GCC diagnostic ignored "-Wrestrict"
 #   elif defined(_MSC_VER)
 #       pragma warning( push )
 //#     pragma warning (disable: 4127)     // condition expression is constant
 //#     pragma warning (disable: 4996)     // 'This function or variable may be unsafe': strcpy, strdup, sprintf, vsnprintf, sscanf, fopen
 #       pragme warning (disable: 4190)     // "-Wreturn-type-c-linkage"
 #   endif
-#endif // NM_WARNING_SUPPRESSION
+#endif // NM_NO_WARNING_SUPPRESSION
 
 #ifdef __cplusplus
 extern "C"	{
@@ -305,39 +316,48 @@ extern "C"	{
 
 #define nmh_radians(deg) M_DEG2RAD(deg)
 #define nmh_degrees(rad) M_RAD2DEG(rad)
-#ifndef NM_DOUBLE_PRECISION
-#define nmh_sin(v)      sinf(v)
-#define nmh_cos(v)      cosf(v)
-#define nmh_tan(v)      tanf(v)
-#define nmh_asin(v)     asinf(v)
-#define nmh_acos(v)     acosf(v)
-#define nmh_atan(v)     atanf(v)
-#define nmh_atan2(y,x)  atan2f(y,x)
-#define nmh_sqrt(v)     sqrtf(v)
-#define nmh_fabs(v)     fabsf(v)
-#define nmh_fmod(a,b)   fmodf(a,b)
-#define nmh_pow(x,y)    powf(x,y)
-#define nmh_round(v)    ((v) < 0.0f ? ceilf((v) - 0.5f) : floorf((v) + 0.5f))
-#define nmh_ceil(v)     ceilf(v)
-#define nmh_floor(v)    floorf(v)
-#else //NM_DOUBLE_PRECISION
-#define nmh_sin(v)      sin(v)
-#define nmh_cos(v)      cos(v)
-#define nmh_tan(v)      tan(v)
-#define nmh_asin(v)     asin(v)
-#define nmh_acos(v)     acos(v)
-#define nmh_atan(v)     atan(v)
-#define nmh_atan2(y,x)  atan2(y,x)
-#define nmh_sqrt(v)     sqrt(v)
-#define nmh_fabs(v)     fabs(v)
-#define nmh_fmod(a,b)   fmod(a,b)
-#define nmh_pow(x,y)    pow(x,y)
-#define nmh_round(v)    ((v) < 0.0 ? ceil((v) - 0.5) : floor((v) + 0.5))
-#define nmh_ceil(v)     ceil(v)
-#define nmh_floor(v)    floor(v)
+#if (!defined(NM_DOUBLE_PRECISION) && !defined(NM_NO_C99_MATH_FUNCTIONS))
+#   define nmh_sin(v)      sinf(v)
+#   define nmh_cos(v)      cosf(v)
+#   define nmh_tan(v)      tanf(v)
+#   define nmh_asin(v)     asinf(v)
+#   define nmh_acos(v)     acosf(v)
+#   define nmh_atan(v)     atanf(v)
+#   define nmh_atan2(y,x)  atan2f(y,x)
+#   define nmh_sqrt(v)     sqrtf(v)
+#   define nmh_fabs(v)     fabsf(v)
+#   define nmh_fmod(a,b)   fmodf(a,b)
+#   define nmh_pow(x,y)    powf(x,y)
+#   define nmh_round(v)    ((v) < 0.0f ? ceilf((v) - 0.5f) : floorf((v) + 0.5f))
+#   define nmh_ceil(v)     ceilf(v)
+#   define nmh_floor(v)    floorf(v)
+#   if (defined(GNU_SOURCE) || defined(NM_HAS_SINCOS))
+#       define nmh_sincos(ANGLE,PSIN,PCOS)  {sincosf(ANGLE,PSIN,PCOS);} // old compilers
+#   else
+#       define nmh_sincos(ANGLE,PSIN,PCOS)  {*PSIN=sinf(ANGLE);*PCOS=cosf(ANGLE);}  // new compilers can optimize this in -O2 or -O3
+#   endif
+#else //NM_DOUBLE_PRECISION || NM_NO_C99_MATH_FUNCTIONS
+#   define nmh_sin(v)      sin(v)
+#   define nmh_cos(v)      cos(v)
+#   define nmh_tan(v)      tan(v)
+#   define nmh_asin(v)     asin(v)
+#   define nmh_acos(v)     acos(v)
+#   define nmh_atan(v)     atan(v)
+#   define nmh_atan2(y,x)  atan2(y,x)
+#   define nmh_sqrt(v)     sqrt(v)
+#   define nmh_fabs(v)     fabs(v)
+#   define nmh_fmod(a,b)   fmod(a,b)
+#   define nmh_pow(x,y)    pow(x,y)
+#   define nmh_round(v)    ((v) < 0.0 ? ceil((v) - 0.5) : floor((v) + 0.5))
+#   define nmh_ceil(v)     ceil(v)
+#   define nmh_floor(v)    floor(v)
+#   if (defined(GNU_SOURCE) || defined(NM_HAS_SINCOS))
+#       define nm_sincos(ANGLE,PSIN,PCOS)  {sincos(ANGLE,PSIN,PCOS);} // old compilers
+#   else
+#       define nm_sincos(ANGLE,PSIN,PCOS)  {*PSIN=sin(ANGLE);*PCOS=cos(ANGLE);}  // new compilers can optimize this in -O2 or -O3
+#   endif
 #endif // NM_DOUBLE_PRECISION
 #define nmh_fractional_part(v) nmh_fmod(v,(nmoat)1.0)
-NM_API_DEF_EXT_INL void nmh_sincos(nmoat v,nmoat* NM_RESTRICT s,nmoat* NM_RESTRICT c);
 
 
 NM_API_DEF_EXT_INL int nm_AreEqualEps(const nmoat* NM_RESTRICT a,const nmoat* NM_RESTRICT b,int num_nmoats,nmoat eps);
@@ -434,8 +454,12 @@ NM_API_DEF_EXT_INL nmoat* nm_QuatMulVec3Inv(nmoat* NM_RESTRICT vOut3,const nmoat
 NM_API_DEF_EXT_INL nmoat* nm_QuatFromAngleAxis(nmoat* NM_RESTRICT qOut4,nmoat rfAngle,nmoat rkAxisX,nmoat rkAxisY,nmoat rkAxisZ);
 NM_API_DEF_EXT_INL nmoat* nm_QuatFromAngleAxisVec3(nmoat* NM_RESTRICT qOut4,nmoat rfAngle,const nmoat* NM_RESTRICT rkAxis3);
 NM_API_DEF_EXT_INL void nm_QuatToAngleAxis(const nmoat* NM_RESTRICT q4,nmoat* NM_RESTRICT rfAngleOut1,nmoat* NM_RESTRICT rkAxisOut3);
+NM_API_DEF_EXT_INL nmoat* nm_QuatRotateFromAxisAngle(nmoat* NM_RESTRICT q4,nmoat rfAngle,nmoat rkAxisX,nmoat rkAxisY,nmoat rkAxisZ);
+NM_API_DEF_EXT_INL nmoat* nm_QuatRotateFromAxisAngleVec3(nmoat* NM_RESTRICT q4,nmoat rfAngle,const nmoat* NM_RESTRICT rkAxis3);
 NM_API_DEF_EXT_INL nmoat* nm_QuatFromLookAtYX(nmoat* NM_RESTRICT qOut4,nmoat sourcePosX,nmoat sourcePosY,nmoat sourcePosZ,nmoat targetPosX,nmoat targetPosY,nmoat targetPosZ);
 NM_API_DEF_EXT_INL nmoat* nm_QuatFromEuler(nmoat* NM_RESTRICT qOut4,nmoat fAngleX,nmoat fAngleY,nmoat fAngleZ,int eulerRotationMode);
+NM_API_DEF_EXT_INL void nm_QuatGetAngularVelocity(nmoat* NM_RESTRICT angVel3,const nmoat* newQuat4,const nmoat* oldQuat4,nmoat halfTimeStep);
+NM_API_DEF_EXT_INL void nm_QuatAdvance(nmoat* NM_RESTRICT qOut4,const nmoat* NM_RESTRICT q4,const nmoat* NM_RESTRICT angVel3,nmoat halfTimeStep);
 
 
 
@@ -1758,13 +1782,13 @@ NM_API_INL int isEqual(const mat4& a,const mat4& b,nmoat eps=NM_EPSILON) {return
 #endif //NM_NAMESPACE
 
 
-#ifdef NM_WARNING_SUPPRESSION
-#   if (defined(__GNUC__) || defined(__MINGW__) || defined(__clang__))
+#ifndef NM_NO_WARNING_SUPPRESSION
+#   ifdef COMPILER_SUPPORTS_GCC_DIAGNOSTIC
 #       pragma GCC diagnostic pop
 #   elif defined(_MSC_VER)
 #       pragma warning( pop )
 #   endif
-#endif // NM_WARNING_SUPPRESSION
+#endif // NM_NO_WARNING_SUPPRESSION
 
 
 #endif //MINIMATH_H_
@@ -1791,6 +1815,7 @@ NM_API_INL int isEqual(const mat4& a,const mat4& b,nmoat eps=NM_EPSILON) {return
 #ifdef MINIMATH_IMPLEMENTATION
 #ifndef MINIMATH_IMPLEMENTATION_GUARD
 #define MINIMATH_IMPLEMENTATION_GUARD
+
 
 #ifndef NM_API_IMPL
 #define NM_API_IMPL /* no-op */
@@ -1829,17 +1854,26 @@ NM_API_INL int isEqual(const mat4& a,const mat4& b,nmoat eps=NM_EPSILON) {return
 #   define NM_COPY_MACRO(NMOATP_DST,NMOATP_SRC,NUM_NMOATS_TO_COPY)  {int i;for(i=0;i<(NUM_NMOATS_TO_COPY);i++) NMOATP_DST[i]=NMOATP_SRC[i];}
 #endif //NM_USE_MEMCPY
 
-#ifdef NM_WARNING_SUPPRESSION
+#ifndef COMPILER_SUPPORTS_GCC_DIAGNOSTIC
 #   if (defined(__GNUC__) || defined(__MINGW__) || defined(__clang__))
+#       define COMPILER_SUPPORTS_GCC_DIAGNOSTIC
+#   endif
+#endif
+
+#ifndef NM_NO_WARNING_SUPPRESSION
+#   ifdef COMPILER_SUPPORTS_GCC_DIAGNOSTIC
 #       pragma GCC diagnostic push
+#       pragma GCC diagnostic ignored "-Wpragmas"
+#       pragma GCC diagnostic ignored "-Wunknown-warning-option"
 #       pragma GCC diagnostic ignored "-Wmissing-braces"
+#       pragma GCC diagnostic ignored "-Wrestrict"
 #   elif defined(_MSC_VER)
 #       pragma warning( push )
 //#     pragma warning (disable: 4127)     // condition expression is constant
 //#     pragma warning (disable: 4996)     // 'This function or variable may be unsafe': strcpy, strdup, sprintf, vsnprintf, sscanf, fopen
 #       pragme warning (disable: 4190)     // "-Wreturn-type-c-linkage"
 #   endif
-#endif // NM_WARNING_SUPPRESSION
+#endif // NM_NO_WARNING_SUPPRESSION
 
 #ifdef NM_USE_SIMD
 #	if (!defined(__SSE__) && (defined(_MSC_VER) && defined(_M_IX86_FP) && _M_IX86_FP>0))
@@ -1961,25 +1995,6 @@ NM_API_PRIV_INL __m256d Mat2MulAdj(__m256d vec1, __m256d vec2)   {
 extern "C"	{
 #endif //__cplusplus
 
-
-
-#ifndef NM_DOUBLE_PRECISION
-NM_API_IMPL void nmh_sincos(nmoat v,nmoat* NM_RESTRICT s,nmoat* NM_RESTRICT c)  {
-#   if (defined(GNU_SOURCE) || defined(NM_HAS_SINCOS))
-    return sincosf(v,s,c);
-#   else
-    *s=sinf(v);*c=cosf(v);
-#   endif
-}
-#else //NM_DOUBLE_PRECISION
-NM_API_IMPL void nmh_sincos(nmoat v,nmoat* NM_RESTRICT s,nmoat* NM_RESTRICT c)  {
-#   if (defined(GNU_SOURCE) || defined(NM_HAS_SINCOS))
-    return sincos(v,s,c);
-#   else
-    *s=sin(v);*c=cos(v);
-#   endif
-}
-#endif // NM_DOUBLE_PRECISION
 
 
 // private functions here ---------------------------------------------------
@@ -2342,6 +2357,49 @@ NM_API_IMPL void nm_QuatToAngleAxis(const nmoat* NM_RESTRICT q4,nmoat* NM_RESTRI
             rkAxisOut[0]=q[0]*tmp2; rkAxisOut[1]=q[1]*tmp2; rkAxisOut[2]=q[2]*tmp2;
         }*/
 }
+NM_API_IMPL nmoat* nm_QuatRotateFromAxisAngle(nmoat* NM_RESTRICT q4,nmoat rfAngle,nmoat rkAxisX,nmoat rkAxisY,nmoat rkAxisZ) {
+    // assert:  axis[] is unit length
+    //
+    // The quaternion representing the rotation is
+    //   a = cos(A/2)+sin(A/2)*(x*i+y*j+z*k)
+    nmoat fSin,fCos;nmh_sincos((nmoat)(0.5)*rfAngle,&fSin,&fCos);
+    nmoat a[4] = {rkAxisX*fSin,rkAxisY*fSin,rkAxisZ*fSin,fCos};
+    const nmoat b[4] = {q4[0],q4[1],q4[2],q4[3]};
+
+    // Optional: normalize a
+    //const nmoat f = (nmoat)1 / nmh_sqrt(a[0]*a[0] + a[1]*a[1] + a[2]*a[2] + a[3]*a[3]);
+    //a[0]*= f;a[1]*= f;a[2]*= f;a[3]*= f;
+
+    // Multiply by q4 as right-hand side
+    q4[0] = b[0]*a[3] + a[0]*b[3] + a[1]*b[2] - a[2]*b[1];
+    q4[1] = b[1]*a[3] + a[1]*b[3] + a[2]*b[0] - a[0]*b[2];
+    q4[2] = b[2]*a[3] + a[2]*b[3] + a[0]*b[1] - a[1]*b[0];
+    q4[3] = a[3]*b[3] - a[0]*b[0] - a[1]*b[1] - a[2]*b[2];
+
+    return q4;
+}
+NM_API_IMPL nmoat* nm_QuatRotateFromAxisAngleVec3(nmoat* NM_RESTRICT q4,nmoat rfAngle,const nmoat* NM_RESTRICT rkAxis3)   {return nm_QuatRotateFromAxisAngle(q4,rfAngle,rkAxis3[0],rkAxis3[1],rkAxis3[2]);}
+
+NM_API_IMPL void nm_QuatGetAngularVelocity(nmoat* NM_RESTRICT angVel3,const nmoat* newQuat4,const nmoat* oldQuat4,nmoat halfTimeStep)   {
+    // assert: this works for unit length quaternions only
+    // oldQuat4 and newQuat4 must be 'close' for this to work (small halfTimeStep)
+    const nmoat a[4] = {newQuat4[0]-oldQuat4[0],newQuat4[1]-oldQuat4[1],newQuat4[2]-oldQuat4[2],newQuat4[3]-oldQuat4[3]}; // deltaQ
+    const nmoat b[4] = {-oldQuat4[0],-oldQuat4[1],-oldQuat4[2],oldQuat4[3]};  // invOldQ
+    const nmoat invHalfTimeStep = halfTimeStep!=(nmoat)0 ? (nmoat)1/halfTimeStep : (nmoat)0;
+    //NM_ASSERT(halfTimeStep!=0);
+    angVel3[0] = (a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1])*invHalfTimeStep;  // x
+    angVel3[1] = (a[3] * b[1] + a[1] * b[3] + a[2] * b[0] - a[0] * b[2])*invHalfTimeStep;  // y
+    angVel3[2] = (a[3] * b[2] + a[2] * b[3] + a[0] * b[1] - a[1] * b[0])*invHalfTimeStep;  // z
+}
+NM_API_IMPL void nm_QuatAdvance(nmoat* NM_RESTRICT qOut4,const nmoat* NM_RESTRICT q4,const nmoat* NM_RESTRICT angVel3,nmoat halfTimeStep)    {
+    // assert: this works for unit length quaternions only
+    // advancement must be small for this to work (small halfTimeStep)
+    nmoat deltaQ[4] = {angVel3[0],angVel3[1],angVel3[2],(nmoat)0};int i;
+    nm_QuatMul(deltaQ,deltaQ,q4);
+    for (i=0;i<4;i++) qOut4[i] = q4[i]+deltaQ[i]*halfTimeStep;
+    nm_QuatNormalize(qOut4);
+}
+
 NM_API_IMPL nmoat* nm_QuatFromLookAtYX(nmoat* NM_RESTRICT qOut4,nmoat sourcePosX,nmoat sourcePosY,nmoat sourcePosZ,nmoat targetPosX,nmoat targetPosY,nmoat targetPosZ)   {
     nmoat D[3] = {targetPosX-sourcePosX,targetPosY-sourcePosY,targetPosZ-sourcePosZ};
     nmoat Dxz2 = D[0]*D[0]+D[2]*D[2];
@@ -4478,7 +4536,7 @@ NM_API_IMPL void nm_DiscreteFourierTransform1D(nmoat out[][2],const nmoat in[][2
     // WORKS! Tested against -lfftw3
     nmoat angle, wtmp, wpr, wpi, wr, wi, tc[2];
     int n = 1, n2, k, m, i, j=0;
-    const nmoat pi2 = (nmoat)(M_PI*2.0);
+    const nmoat pi = (nmoat) M_PI;nmoat sin_angle,cos_angle;
 
     NM_ASSERT(1<<log2size==size_pot);
 
@@ -4495,13 +4553,15 @@ NM_API_IMPL void nm_DiscreteFourierTransform1D(nmoat out[][2],const nmoat in[][2
         }
     }
     else    {
+#       ifndef NM_SWAP_MACRO
+#       define NM_SWAP_MACRO(X,Y,TMP)  {(TMP)=(X);(X)=(Y);(Y)=(TMP);}
+#       endif
         for (i=0;i<size_pot;i++)	{
             m = size_pot;
             if (j>i)	{
                 //   Swap entries
-                    tc[0]=out[j][0];	    tc[1]=out[j][1];
-                out[j][0]=out[i][0];	out[j][1]=out[i][1];
-                out[i][0]=    tc[0];	out[i][1]=    tc[1];
+                NM_SWAP_MACRO(out[j][0],out[i][0],tc[0]);
+                NM_SWAP_MACRO(out[j][1],out[i][1],tc[1]);
             }
             while (j & (m>>=1))	j&=~m;	// remove m
             j|=m;	// set m
@@ -4513,9 +4573,11 @@ NM_API_IMPL void nm_DiscreteFourierTransform1D(nmoat out[][2],const nmoat in[][2
     // Reference used for step (2): https://www.programming-techniques.com/2013/05/calculation-of-discrete-fourier-transformdft-in-c-c-using-naive-and-fast-fourier-transform-fft-method.html
     // LICENSE of reference code: not present (probably public domain). [Otherwise we should stick to LIBROW implementation here too]
     for (k = 0; k < log2size; ++k)	{
-        n2 = n; n <<= 1;
-        angle = (inverse_transform)?pi2/(nmoat)n:-pi2/(nmoat)n;
-        wtmp= nmh_sin((nmoat)0.5*angle); wpr = -(nmoat)2.0*wtmp*wtmp; wpi = nmh_sin(angle);
+        n2 = n; n <<= 1;                
+        angle = (inverse_transform)?pi/(nmoat)n:-pi/(nmoat)n;
+        nmh_sincos(angle,&sin_angle,&cos_angle);    /* it can calculate sin_angle and cos_angle together (in new compilers even without the presence of an explicit sincos(...) function when -O2 or -O3 are used) */
+        wtmp= sin_angle; wpr = (nmoat)2.0*sin_angle;
+        wpi = wpr*cos_angle; wpr*= -sin_angle;
         wr = (nmoat)1.0; wi = (nmoat)0.0;
         for (m=0; m < n2; ++m) {
             for (i=m; i < size_pot; i+=n) {
@@ -4532,7 +4594,7 @@ NM_API_IMPL void nm_DiscreteFourierTransform1D(nmoat out[][2],const nmoat in[][2
     }
     if (inverse_transform && !dont_scale_inverse_transform_like_fftw3_does) {
         const nmoat scale = (nmoat)1.0/(nmoat)size_pot;
-        for(i = 0;i < n /*??? or size_pot?*/;i++) {
+        for(i = 0;i < n /*[n == size_pot]*/;i++) {
             out[i][0] *= scale;
             out[i][1] *= scale;
         }
@@ -4895,13 +4957,13 @@ NM_API_IMPL int mat4_areequal(const mat4* a,const mat4* b)              {return 
 }
 #endif //NM_NAMESPACE
 
-#ifdef NM_WARNING_SUPPRESSION
-#   if (defined(__GNUC__) || defined(__MINGW__) || defined(__clang__))
+#ifndef NM_NO_WARNING_SUPPRESSION
+#   ifdef COMPILER_SUPPORTS_GCC_DIAGNOSTIC
 #       pragma GCC diagnostic pop
 #   elif defined(_MSC_VER)
 #       pragma warning( pop )
 #   endif
-#endif // NM_WARNING_SUPPRESSION
+#endif // NM_NO_WARNING_SUPPRESSION
 
 #endif //MINIMATH_IMPLEMENTATION_GUARD
 #endif //MINIMATH_IMPLEMENTATION

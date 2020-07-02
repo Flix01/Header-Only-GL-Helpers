@@ -84,6 +84,7 @@ with the following changes:
 #ifndef SDF_H_
 #define SDF_H_
 
+#include <stdarg.h>    // va_list, va_start, va_end
 
 #ifndef SDF_NO_NAMESPACE
 namespace Sdf {
@@ -207,6 +208,8 @@ struct SdfTextColor {
 static SdfTextColor SdfTextDefaultColor;
 void SdfAddText(struct SdfTextChunk* chunk,const char* startText,bool italic=false,const SdfTextColor* pSdfTextColor=NULL,const SdfVec2* textScaling=NULL,const char* endText=NULL,const SDFHAlignment* phalignOverride=NULL,bool fakeBold=false);
 void SdfAddTextWithTags(struct SdfTextChunk* chunk,const char* startText,const char* endText=NULL);
+void SdfAddTextFormatted(struct SdfTextChunk* chunk,bool italic,const SdfTextColor* pSdfTextColor,const SdfVec2* textScaling,const SDFHAlignment* phalignOverride,bool fakeBold,const char* text,...);
+void SdfAddTextFormattedWithTags(struct SdfTextChunk* chunk,const char* text,...);
 void SdfClearText(struct SdfTextChunk* chunk);
 //---------------------------------------------------------------------------------------------------
 
@@ -237,6 +240,7 @@ enum SDFAnimationMode {
 
     SDF_AM_BLINK,
     SDF_AM_PULSE,
+    SDF_AM_FLASH,
     SDF_AM_TYPING
 };
 struct SdfAnimationKeyFrame {
@@ -716,17 +720,40 @@ struct SdfTextChunk {
             tmpKeyFrame.scale.x=tmpKeyFrame.scale.y = 1.0f+((0.005f*20.f)/(float)(this->props.maxNumTextLines))*sinf(tmpLocalTime*10.0f);
             }
             break;
+        case SDF_AM_FLASH:   {
+            if (tmpLocalTime<=1.0f) {
+                float tmp;
+                if (tmpLocalTime<=0.5f) tmp = tmpLocalTime*2.f;                 // 0->1
+                else                    tmp = 1.f-((tmpLocalTime-0.5f)*2.f);    // 1->0
+#               ifndef SDF_AM_FLASH_ALORITHM
+#                   define SDF_AM_FLASH_ALORITHM 3
+#               endif
+                tmpKeyFrame.alpha =
+#               if SDF_AM_FLASH_ALORITHM==0
+                        tmp
+#               elif SDF_AM_FLASH_ALORITHM==1
+                        tmp*tmp
+#               elif SDF_AM_FLASH_ALORITHM==2
+                        tmp * tmp * (3.f - 2.f * tmp)
+#               else
+                        tmp * tmp * tmp * (tmp * (tmp * 6.f - 15.f) + 10.f)
+#               endif
+                ;
+            }
+            else {setMute(true);animationStartTime=-1.f;animationMode=SDF_AM_NONE;return (tmpVisible=false);}
+        }
+            break;            
         case SDF_AM_TYPING:   {
             static const float timePerChar = 0.15f;
             const int numChars = buffer->numChars();
             const float timeForAllChars = timePerChar * numChars;
-            if (timeForAllChars>0)  {
+            //if (timeForAllChars>0)  {
                 if (tmpLocalTime<=timeForAllChars)	{
-		    tmpKeyFrame.endChar = (int)(((tmpLocalTime/timeForAllChars)*(float)(numChars))+0.5f);
+		    		tmpKeyFrame.endChar = (int)(((tmpLocalTime/timeForAllChars)*(float)(numChars))+0.5f);
                 }
                 else {setMute(false);animationStartTime=-1.f;animationMode=SDF_AM_NONE;}
-            }
-            else {setMute(false);animationStartTime=-1.f;animationMode=SDF_AM_NONE;}
+            //}
+            //else {setMute(false);animationStartTime=-1.f;animationMode=SDF_AM_NONE;}
         }
             break;
         case SDF_AM_MANUAL: {
@@ -792,14 +819,19 @@ struct SdfShaderProgram {
     GLint uniformLocationSampler;
     GLint uniformLocationOffsetAndScale;
     GLint uniformLocationAlphaAndShadow;
+    bool wasLoadShaderProgramCalled;    // if loadShaderProgram(...) fails, we don't want to keep calling it because program==0. So we can check this.
     SdfShaderProgram() : program(0),uniformLocationOrthoMatrix(-1),uniformLocationSampler(-1),
-    uniformLocationOffsetAndScale(-1),uniformLocationAlphaAndShadow(-1) {}
+    uniformLocationOffsetAndScale(-1),uniformLocationAlphaAndShadow(-1),wasLoadShaderProgramCalled(false) {}
     ~SdfShaderProgram() {destroy();}
     void destroy() {
         if (program) {glDeleteProgram(program);program=0;}
+        wasLoadShaderProgramCalled=false;
+        uniformLocationOrthoMatrix=uniformLocationSampler=
+        uniformLocationOffsetAndScale=uniformLocationAlphaAndShadow=-1;        
     }
     bool loadShaderProgram(bool forOutlineShaderProgram) {
         if (program) return true;
+        wasLoadShaderProgramCalled = true;
         program = CompileShaderProgramAndSetCorrectAttributeLocations(forOutlineShaderProgram);
         if (program)    {
             uniformLocationOrthoMatrix = glGetUniformLocation(program,"ortho");
@@ -1895,11 +1927,42 @@ bool SdfTextChunk::endText(SdfVec2 screenSize) {
 }
 
 
+struct SdfHelperFormatBuffer {
+    char* buffer;size_t bufferSize;
+    SdfHelperFormatBuffer() {
+        bufferSize = 1024;
+        buffer = (char*) SDF_MALLOC(bufferSize);
+        SDF_ASSERT(buffer);
+    }
+    ~SdfHelperFormatBuffer() {
+        SDF_FREE(buffer);buffer=NULL;
+        bufferSize=0;
+    }
+    int formatStringV(const char* text, va_list args)  {
+        SDF_ASSERT(buffer && bufferSize>0);
+        //if (buffer == NULL) return vsnprintf(buffer, bufferSize, text, args);       // never happens
+        int w = (int)bufferSize - 1;
+        do  {
+            w = vsnprintf(buffer, bufferSize, text, args);
+            if (w>=(int)bufferSize) {
+                size_t newBufferSize = w*2;char* newBuffer = (char*) SDF_MALLOC(newBufferSize);
+                if (newBuffer)  {SDF_FREE(buffer);buffer=newBuffer;bufferSize=newBufferSize;}
+                else {w=bufferSize-1;break;}
+            }
+            else break;
+        }
+        while (1);
+        SDF_ASSERT(w>=0 && w<(int)bufferSize);
+        buffer[w] = '\0';
+        return w+1;
+    }
+};
 
 struct SdfStaticStructs {
     SdfVector<SdfTextChunk*> gSdfTextChunks;
     SdfVector<SdfCharset*> gSdfCharsets;
     SdfVector<SdfAnimation*> gSdfAnimations;
+	SdfHelperFormatBuffer tmpFormat;
 
     SdfStaticStructs() {}
     ~SdfStaticStructs() {DestroyAll();}
@@ -1910,6 +1973,10 @@ struct SdfStaticStructs {
         DestroyAllAnimations();
         DestroyAllTextChunks();
         DestroyAllCharsets();
+        // Are these necessary? YES
+        for (int i=0;i<2;i++) {gSdfShaderPrograms[i].destroy();}
+        gSdfTextDefaultColor=SdfTextColor(SdfVec4(1,1,1,1));
+        gSdfDisplaySize=SdfVec2(800,450);        
     }
 };
 static SdfStaticStructs gSdfInit;
@@ -2208,6 +2275,30 @@ void SdfAddTextWithTags(SdfTextChunk* chunk,const char* startText,const char* en
     if (startSubchunk && p) TS.SdfAddText(chunk,startSubchunk,p);
 }
 
+
+#if defined(_MSC_VER) && !defined(vsnprintf)
+#	define vsnprintf _vsnprintf
+#endif
+void SdfAddTextFormatted(struct SdfTextChunk* chunk,bool italic,const SdfTextColor* pSdfTextColor,const SdfVec2* textScaling,const SDFHAlignment* phalignOverride,bool fakeBold,const char* text,...)   {
+    va_list args;
+    va_start(args, text);
+    const int size = gSdfInit.tmpFormat.formatStringV(text, args);
+    const char* endText = gSdfInit.tmpFormat.buffer + size;
+    const char* startText = gSdfInit.tmpFormat.buffer;
+    va_end(args);
+    SdfAddText(chunk,startText,italic,pSdfTextColor,textScaling,endText,phalignOverride,fakeBold);
+}
+void SdfAddTextFormattedWithTags(struct SdfTextChunk* chunk,const char* text,...)   {
+    va_list args;
+    va_start(args, text);
+    const int size = gSdfInit.tmpFormat.formatStringV(text, args);
+    const char* endText = gSdfInit.tmpFormat.buffer + size;
+    const char* startText = gSdfInit.tmpFormat.buffer;
+    va_end(args);
+    SdfAddTextWithTags(chunk,startText,endText);
+}
+
+
 void SdfTextColor::SetDefault(const SdfTextColor& defaultColor,bool updateAllExistingTextChunks) {
     gSdfTextDefaultColor=defaultColor;
     if (updateAllExistingTextChunks)    {
@@ -2413,7 +2504,7 @@ void SdfRender(const float pViewport[4],float globalTime) {
     static SdfVec2 displaySizeLast(-1,-1);
     const SdfVec2 displaySize(pViewport[2],pViewport[3]);
     gSdfDisplaySize = displaySize;
-    if (displaySize.x==0 || displaySize.y==0) return;
+    if (displaySize.x==0 || displaySize.y==0 || gSdfInit.gSdfTextChunks.size()==0) return;
     const bool screenSizeChanged = displaySizeLast.x!=displaySize.x || displaySizeLast.y!=displaySize.y;
     if (screenSizeChanged) {
         displaySizeLast = displaySize;
@@ -2423,15 +2514,25 @@ void SdfRender(const float pViewport[4],float globalTime) {
     }
 
     bool hasRegularFonts=false,hasOutlineFonts=false;
+    size_t num_muted_chunks = 0;        
     for (int i=0,isz=gSdfInit.gSdfTextChunks.size();i<isz;i++) {
         SdfTextChunk* c = gSdfInit.gSdfTextChunks[i];
-        if (c->textBits.size()==0 || !c->checkVisibleAndEvalutateAnimationIfNecessary(globalTime)) continue;
-        hasRegularFonts|=(c->buffer->type==0 || (c->buffer->type&(SDF_BT_SHADOWED)));
-        hasOutlineFonts|=(c->buffer->type&(SDF_BT_OUTLINE));
-        //if (hasRegularFonts && hasOutlineFonts) break;    // We cannot exit early, because we must evalutate checkVisibleAndEvalutateAnimationIfNecessary(...) for all the text chunks
+        if (!c->mute)   {
+	        if (c->textBits.size()==0 || !c->checkVisibleAndEvalutateAnimationIfNecessary(globalTime)) continue;
+    	    hasRegularFonts|=(c->buffer->type==0 || (c->buffer->type&(SDF_BT_SHADOWED)));
+    	    hasOutlineFonts|=(c->buffer->type&(SDF_BT_OUTLINE));
+    	    //if (hasRegularFonts && hasOutlineFonts) break;    // We cannot exit early, because we must evalutate checkVisibleAndEvalutateAnimationIfNecessary(...) for all the text chunks
+    	}
+		else {
+            ++num_muted_chunks;
+            c->checkVisibleAndEvalutateAnimationIfNecessary(globalTime);    // not sure if we must still evalutate this (but it takes just a line of code if 'mute' is true)		
+		}    	
     }
 
-    if (!hasRegularFonts && !hasOutlineFonts) return;
+    if ((!hasRegularFonts && !hasOutlineFonts) || num_muted_chunks==gSdfInit.gSdfTextChunks.size()) {
+        displaySizeLast=SdfVec2(-1,-1); // for next loop
+        return;
+    }
 
 
     const float fb_x = pViewport[0];//pViewportOverride ? pViewportOverride->x*io.DisplayFramebufferScale.x : 0.f;
@@ -2441,17 +2542,11 @@ void SdfRender(const float pViewport[4],float globalTime) {
     glViewport((GLint)fb_x, (GLint)fb_y, (GLsizei)fb_width, (GLsizei)fb_height);
     //fprintf(stderr,"%d %d %d %d (%d %d)\n",(GLint)fb_x, (GLint)fb_y, (GLsizei)fb_width, (GLsizei)fb_height,(int)io.DisplaySize.x,(int)io.DisplaySize.y);
 
-    if (hasRegularFonts && !gSdfShaderPrograms[0].program) {
-        static bool done = false;
-        if (done) return;
-        done = true;
+    if (hasRegularFonts && !gSdfShaderPrograms[0].program && !gSdfShaderPrograms[0].wasLoadShaderProgramCalled) {
         if (!gSdfShaderPrograms[0].loadShaderProgram(false)) return;
         //else {printf("gSdfShaderPrograms[0] OK.\n");fflush(stdout);}
     }
-    if (hasOutlineFonts && !gSdfShaderPrograms[1].program) {
-        static bool done = false;
-        if (done) return;
-        done = true;
+    if (hasOutlineFonts && !gSdfShaderPrograms[1].program && !gSdfShaderPrograms[1].wasLoadShaderProgramCalled) {
         if (!gSdfShaderPrograms[1].loadShaderProgram(true)) return;
         //else {printf("gSdfShaderPrograms[1] OK.\n");fflush(stdout);}
     }
@@ -2475,7 +2570,8 @@ void SdfRender(const float pViewport[4],float globalTime) {
     if (hasRegularFonts)    {
         SdfShaderProgram& SP = gSdfShaderPrograms[0];
         glUseProgram(SP.program);
-        if (screenSizeChanged) SP.resetUniformOrtho(displaySize.x,displaySize.y);
+        //if (screenSizeChanged) 
+        	SP.resetUniformOrtho(displaySize.x,displaySize.y);
         bool isShadow = false;
         for (int i=0,isz=gSdfInit.gSdfTextChunks.size();i<isz;i++) {
             SdfTextChunk* c = gSdfInit.gSdfTextChunks[i];
@@ -2509,7 +2605,8 @@ void SdfRender(const float pViewport[4],float globalTime) {
     if (hasOutlineFonts)    {
         SdfShaderProgram& SP = gSdfShaderPrograms[1];
         glUseProgram(SP.program);
-        if (screenSizeChanged) SP.resetUniformOrtho(displaySize.x,displaySize.y);
+        //if (screenSizeChanged) 
+        	SP.resetUniformOrtho(displaySize.x,displaySize.y);
         for (int i=0,isz=gSdfInit.gSdfTextChunks.size();i<isz;i++) {
             SdfTextChunk* c = gSdfInit.gSdfTextChunks[i];
             if (c->textBits.size()==0 || !c->tmpVisible) continue;
