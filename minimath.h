@@ -352,9 +352,9 @@ extern "C"	{
 #   define nmh_ceil(v)     ceil(v)
 #   define nmh_floor(v)    floor(v)
 #   if (defined(GNU_SOURCE) || defined(NM_HAS_SINCOS))
-#       define nm_sincos(ANGLE,PSIN,PCOS)  {sincos(ANGLE,PSIN,PCOS);} // old compilers
+#       define nmh_sincos(ANGLE,PSIN,PCOS)  {sincos(ANGLE,PSIN,PCOS);} // old compilers
 #   else
-#       define nm_sincos(ANGLE,PSIN,PCOS)  {*PSIN=sin(ANGLE);*PCOS=cos(ANGLE);}  // new compilers can optimize this in -O2 or -O3
+#       define nmh_sincos(ANGLE,PSIN,PCOS)  {*PSIN=sin(ANGLE);*PCOS=cos(ANGLE);}  // new compilers can optimize this in -O2 or -O3
 #   endif
 #endif // NM_DOUBLE_PRECISION
 #define nmh_fractional_part(v) nmh_fmod(v,(nmoat)1.0)
