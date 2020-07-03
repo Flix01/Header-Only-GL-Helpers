@@ -1954,7 +1954,7 @@ struct SdfHelperFormatBuffer {
         while (1);
         SDF_ASSERT(w>=0 && w<(int)bufferSize);
         buffer[w] = '\0';
-        return w+1;
+        return w;
     }
 };
 

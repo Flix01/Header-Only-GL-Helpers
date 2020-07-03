@@ -485,11 +485,21 @@ void DrawGL(void)
         unsigned elapsedSeconds = elapsed_time/1000;
         if (elapsedSeconds!=elapsedSecondsOld)  {
             elapsedSecondsOld=elapsedSeconds;
-            char buf[12]="";sprintf(buf,"%.6u",elapsedSeconds);
             Sdf::SdfClearText(gTextChunks[4]);
-            const Sdf::SdfTextColor color(Sdf::Vec4(1.f,1.f,0.f,1.f));
-            Sdf::SdfAddText(gTextChunks[4],"TIME: ",true,&color);
-            Sdf::SdfAddText(gTextChunks[4],buf);
+            
+            // OPTION A
+            //const Sdf::SdfTextColor color(Sdf::Vec4(1.f,1.f,0.f,1.f));
+            //Sdf::SdfAddText(gTextChunks[4],"TIME: ",true,&color);
+            
+            // OPTION A1
+            //char buf[12]="";sprintf(buf,"%.6u",elapsedSeconds);            
+            //Sdf::SdfAddText(gTextChunks[4],buf);
+                        
+			// OPTION A2                                 
+            //Sdf::SdfAddTextFormatted(gTextChunks[4],false,NULL,NULL,NULL,false,"%.6u",elapsedSeconds);
+     
+     		// OPTION B
+     		Sdf::SdfAddTextFormattedWithTags(gTextChunks[4],"<COLOR=FFFF00FF><I>TIME: </I></COLOR>%.6u",elapsedSeconds);
         }
     }
 
