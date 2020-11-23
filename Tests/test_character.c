@@ -294,7 +294,7 @@ static struct cha_character_instance* mouseSelectedCharacterInstance = NULL;
 void InitGL(void) {
 
     // IMPORTANT CALL--------------------------------------------------------
-    Dynamic_Resolution_Init(config.dynamic_resolution_target_fps,config.dynamic_resolution_enabled);
+    Dynamic_Resolution_Init(config.dynamic_resolution_target_fps,config.dynamic_resolution_enabled,1.f);    // last arg is the fixed_resolution_factor, in (0.1f,1.f]. Default is 1.f. It means: (max) internal_resolution = full_window_resolution*fixed_resolution_factor. Works even when dynamic resolution is disabled.
     //-----------------------------------------------------------------------
     // IMPORTANT CALL--------------------------------------------------------
     Teapot_Init();

@@ -92,6 +92,8 @@ Tests/test_sdf_c
 c_vector*
 bvh.h
 Tests/test_bvh*
+*.bak
+
 
 
 

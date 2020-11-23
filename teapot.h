@@ -58,7 +58,7 @@ extern "C" {
 #endif
 
 #ifndef TEAPOT_VERSION
-#   define TEAPOT_VERSION 1.21
+#   define TEAPOT_VERSION 1.23
 #endif //TEAPOT_VERSION
 
 
@@ -133,6 +133,8 @@ typedef enum {
     TEAPOT_MESH_CHARACTER,
     TEAPOT_MESH_GHOST,
     TEAPOT_MESH_SKITTLE,
+    TEAPOT_MESH_FLIPPER_RIGHT,
+    TEAPOT_MESH_FLIPPER_LEFT,
     TEAPOT_MESH_SLEDGE,
     TEAPOT_MESH_TABLE,
     TEAPOT_MESH_TORUS,
@@ -168,6 +170,7 @@ typedef enum {
     TEAPOT_MESH_USER_29,
     TEAPOT_MESH_CUBE,
     TEAPOT_MESH_CUBIC_GROUND,           // Top face is made by 5x5 vertices
+    TEAPOT_MESH_CUBE_ROUNDED,
     TEAPOT_MESH_PLANE_X,
     TEAPOT_MESH_PLANE_Y,
     TEAPOT_MESH_PLANE_Z,
@@ -251,6 +254,12 @@ void Teapot_Draw(const tpoat mMatrix[16],TeapotMeshEnum meshId);        // (opti
 void Teapot_Draw_Mv(const tpoat mvMatrix[16],TeapotMeshEnum meshId);    // (optionally repeat this call for multiple draws) Note that this is not the model matrix, but: Teapot_Helper_MultMatrix(mvMatrix,vMatrix,mMatrix)
 void Teapot_Draw_MvFloat(const float mvMatrix[16],TeapotMeshEnum meshId);    // [enforces float] (optionally repeat this call for multiple draws) Note that this is not the model matrix, but: Teapot_Helper_MultMatrix(mvMatrix,vMatrix,mMatrix)
 
+// These draw a wireframe AABB around the mesh (scaling3 can be NULL)
+void Teapot_DrawAabb(const tpoat mMatrix[16], TeapotMeshEnum meshId, const float *scaling3);
+void Teapot_DrawAabb_Mv(const tpoat mvMatrix[16],TeapotMeshEnum meshId,const float* scaling3);
+void Teapot_DrawAabb_MvFloat(const float mvMatrix[16],TeapotMeshEnum meshId,const float* scaling3);
+
+
 // There are two Teapot_DrawMulti functions:
 typedef struct _Teapot_MeshData {
 #   ifdef TEAPOT_MESHDATA_HAS_MMATRIX_PTR
@@ -266,7 +275,12 @@ typedef struct _Teapot_MeshData {
     float colorAmbient[3];  // Skipped when Teapot_Color_Material is enabled
     float colorSpecular[4]; // Skipped when Teapot_Color_Material is enabled. Used only when TEAPOT_SHADER_SPECULAR is defined
     int outlineEnabled;     // 0 or 1
+    int active;             // 0 or 1
+#   ifdef TEAPOT_MESHDATA_STRUCT_EXTRA_FIELDS
+    TEAPOT_MESHDATA_STRUCT_EXTRA_FIELDS
+#   else
     void* userPtr;          // yours
+#   endif
 #   ifdef __cplusplus
     _Teapot_MeshData();
     virtual ~_Teapot_MeshData() {}  // In case we want to inherit from it in C++
@@ -283,6 +297,9 @@ static __inline void Teapot_MeshData_SetColorAmbient(Teapot_MeshData* md,float R
 #ifdef TEAPOT_SHADER_SPECULAR
 static __inline void Teapot_MeshData_SetColorSpecular(Teapot_MeshData* md,float R, float G, float B, float SHI) {md->colorSpecular[0]=R;md->colorSpecular[1]=G;md->colorSpecular[2]=B;md->colorSpecular[3]=SHI;}
 #endif //TEAPOT_SHADER_SPECULAR
+void Teapot_MeshData_GetAabbHalfExtents(const Teapot_MeshData* md,float* halfAabb);
+void Teapot_MeshData_GetAabbExtents(const Teapot_MeshData* md,float* aabb);
+void Teapot_MeshData_GetAabbCenter(const Teapot_MeshData* md,float* center);
 static __inline void Teapot_MeshData_SetOutlineEnabled(Teapot_MeshData* md,int meshOutlineEnabled) {md->outlineEnabled=meshOutlineEnabled;}
 static __inline void Teapot_MeshData_SetMeshId(Teapot_MeshData* md,TeapotMeshEnum meshId) {md->meshId = meshId;}
 void Teapot_MeshData_CalculateMvMatrix(Teapot_MeshData* md);    // From mMatrix (called internally when Teapot_DrawMulti(...) is used)
@@ -290,10 +307,15 @@ void Teapot_MeshData_CalculateMvMatrixFromArray(Teapot_MeshData** meshes,int num
 Teapot_MeshData* Teapot_MeshData_GetMeshUnderMouse(Teapot_MeshData* const* meshes,int numMeshes,int mouseX,int mouseY,const int* viewport4,tpoat* pOptionalDistanceOut);
 Teapot_MeshData* Teapot_MeshData_GetMeshUnderMouseFromRay(Teapot_MeshData* const* meshes, int numMeshes, const tpoat* rayOrigin3, const tpoat* rayDir3, tpoat* pOptionalDistanceOut);   /* ray in world space */
 
+tpoat* Teapot_Helper_ExtractMatrix3x3(tpoat* __restrict m9Out,const tpoat* __restrict m16,tpoat* __restrict optionalTranslation3Out/*=NULL*/);
 void Teapot_Helper_ExtractScalingFromTransformMatrix(const tpoat* __restrict m16,tpoat* __restrict scaOut3,tpoat* __restrict optionalMOut16);
 
 void Teapot_DrawMulti(Teapot_MeshData** meshes,int numMeshes,int mustSortObjectsForTransparency);  // 'mustSortObjectsForTransparency' requires glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); and  glDisable(GL_BLEND); At the end it restores glDisable(GL_BLEND); if used.
 void Teapot_DrawMulti_Mv(Teapot_MeshData* const* meshes,int numMeshes,int mustSortObjectsForTransparency);  // Same as above, but use it only if you set or calculate all the Teapot_MeshData::mvMatrix[16] manually
+
+void Teapot_MeshData_DrawAabb(const Teapot_MeshData* mesh);
+
+int Teapot_MeshData_Depth_Sorter(const void* pmd0,const void* pmd1);    // helper function used internally by Teapot_DrawMulti(...) when mustSortObjectsForTransparency==1  (for qsort)
 
 //----------------------------------------------------------------------------------------
 void Teapot_PostDraw(void); // unsets program and buffers for drawing
@@ -303,7 +325,8 @@ void Teapot_GetMeshAabbCenter(TeapotMeshEnum meshId,float center[3]);
 void Teapot_GetMeshAabbHalfExtents(TeapotMeshEnum meshId,float halfAabb[3]);
 void Teapot_GetMeshAabbExtents(TeapotMeshEnum meshId,float aabb[3]);
 void Teapot_GetMeshAabbMinAndMax(TeapotMeshEnum meshId,float aabbMin[3],float aabbMax[3]);
-
+void Teapot_GetMeshScaledAabbHalfExtents(TeapotMeshEnum meshId,float halfAabb[3],const float scaling[3]);
+void Teapot_GetMeshScaledAabbExtents(TeapotMeshEnum meshId,float aabb[3],const float scaling[3]);
 
 void Teapot_Enable_ColorMaterial(void);     // (*)
 void Teapot_Disable_ColorMaterial(void);
@@ -324,16 +347,11 @@ void Teapot_Set_MeshOutline_Color(float R,float G, float B, float A);	// A<1.0 r
 void Teapot_Set_MeshOutline_Scaling(float scalingGreaterOrEqualThanOne);    // default is 1.015f
 void Teapot_Set_MeshOutline_Params(float polygonOffsetSlope, float polygonOffsetConstant);  // defaults are -1.f, -250.f
 
-static __inline tpoat* Teapot_Helper_IdentityMatrix(tpoat* __restrict result16) {
-    tpoat* m = result16;
-    m[0]=m[5]=m[10]=m[15]=1;
-    m[1]=m[2]=m[3]=m[4]=m[6]=m[7]=m[8]=m[9]=m[11]=m[12]=m[13]=m[14]=0;
-    return result16;
-}
-static __inline void Teapot_Helper_CopyMatrix(tpoat* __restrict dst16,const tpoat* __restrict src16) {
-    int i;for (i=0;i<16;i++) dst16[i]=src16[i];
-}
-static __inline tpoat* Teapot_Helper_MultMatrixUncheckArgs(tpoat* __restrict result16,const tpoat* __restrict ml16,const tpoat* __restrict mr16) {	
+static __inline tpoat* Teapot_Helper_IdentityMatrix(tpoat* __restrict result16) {tpoat* m = result16;m[0]=m[5]=m[10]=m[15]=1;m[1]=m[2]=m[3]=m[4]=m[6]=m[7]=m[8]=m[9]=m[11]=m[12]=m[13]=m[14]=0;return result16;}
+static __inline tpoat* Teapot_Helper_IdentityMatrix3x3(tpoat* __restrict result9) {tpoat* m = result9;m[0]=m[4]=m[8]=1;m[1]=m[2]=m[3]=m[5]=m[6]=m[7]==0;return result9;}
+static __inline void Teapot_Helper_CopyMatrix(tpoat* __restrict dst16,const tpoat* __restrict src16) {int i;for (i=0;i<16;i++) dst16[i]=src16[i];}
+static __inline void Teapot_Helper_CopyMatrix3x3(tpoat* __restrict dst9,const tpoat* __restrict src9) {int i;for (i=0;i<9;i++) dst9[i]=src9[i];}
+static __inline tpoat* Teapot_Helper_MultMatrixUncheckArgs(tpoat* __restrict result16,const tpoat* __restrict ml16,const tpoat* __restrict mr16) {
 	int i,i4;   
 #	if (defined(TEAPOT_USE_SIMD) && !defined(TEAPOT_MATRIX_USE_DOUBLE_PRECISION) && defined(__SSE__))
     __m128 row1 = _mm_loadu_ps(&ml16[0]);
@@ -403,12 +421,17 @@ static __inline tpoat* Teapot_Helper_MultMatrix(tpoat* __restrict result16,const
 void Teapot_Helper_LookAt(tpoat* __restrict mOut16,tpoat eyeX,tpoat eyeY,tpoat eyeZ,tpoat centerX,tpoat centerY,tpoat centerZ,tpoat upX,tpoat upY,tpoat upZ);
 void Teapot_Helper_Perspective(tpoat* __restrict mOut16,tpoat degfovy,tpoat aspect, tpoat zNear, tpoat zFar);
 void Teapot_Helper_Ortho(tpoat* __restrict mOut16,tpoat left,tpoat right, tpoat bottom, tpoat top,tpoat nearVal,tpoat farVal);
+void Teapot_Helper_Ortho3D(tpoat* __restrict mOut16,tpoat cameraTargetDistance,tpoat degfovy,tpoat aspect,tpoat znear,tpoat zfar);
 tpoat* Teapot_Helper_TranslateMatrix(tpoat* __restrict mInOut16,tpoat x,tpoat y,tpoat z);
 tpoat* Teapot_Helper_RotateMatrix(tpoat* __restrict mInOut16,tpoat degAngle,tpoat x,tpoat y,tpoat z);
 tpoat* Teapot_Helper_ScaleMatrix(tpoat* __restrict mInOut16,tpoat x,tpoat y,tpoat z);
 int Teapot_Helper_InvertMatrix(tpoat* __restrict mOut16,const tpoat* __restrict m16);
 void Teapot_Helper_InvertTransformMatrix(tpoat* __restrict mOut16,const tpoat* __restrict m16);
 void Teapot_Helper_InvertTransformMatrixFast(tpoat* __restrict mOut16,const tpoat* __restrict m16);
+tpoat* Teapot_Helper_ExtractMatrix3x3Inverse(tpoat* __restrict m9Out,const tpoat* __restrict m16);
+tpoat* Teapot_Helper_ExtractMatrix3x3InverseFast(tpoat* __restrict m9Out,const tpoat* __restrict m16);
+void Teapot_Helper_InvertTransformMatrixXZAxisInPlace(tpoat* __restrict m16);
+tpoat* Teapot_Helper_InvertTransformMatrixXZAxis(tpoat* __restrict mOut16,const tpoat* __restrict m16);
 void Teapot_Helper_GetFrustumPlaneEquations(tpoat planeEquationsOut[6][4],const tpoat* __restrict vpMatrix16,int normalizePlanes);
 void Teapot_Helper_GetFrustumPoints(tpoat frustumPoints[8][4],const tpoat* __restrict vpMatrixInverse16);   // frustumPoints[i][3]==1
 
@@ -488,12 +511,12 @@ int Teapot_Helper_UnProject_MvpMatrixInv(tpoat winX,tpoat winY,tpoat winZ,const 
 // Maps the specified window coordinates into object coordinates using mvMatrix16, pMatrix16, and viewport4.
 // The result is stored in objX, objY, and objZ. A return value of 1 indicates success; a return value of 0 indicates failure.
 // viewport4 Specifies the current viewport (as from a glGetIntegerv call).
-static __inline int Teapot_Helper_UnProject(tpoat winX,tpoat winY,tpoat winZ,const tpoat* __restrict mvMatrix16,const tpoat* __restrict pMatrix16,const int* viewport4,tpoat* objX,tpoat* objY,tpoat* objZ) {
-    tpoat mvpMatrixInv[16];Teapot_Helper_MultMatrix(mvpMatrixInv,pMatrix16,mvMatrix16);Teapot_Helper_InvertMatrix(mvpMatrixInv,mvpMatrixInv);
-    return Teapot_Helper_UnProject_MvpMatrixInv(winX,winY,winZ,mvpMatrixInv,viewport4,objX,objY,objZ);
-}
+int Teapot_Helper_UnProject(tpoat winX,tpoat winY,tpoat winZ,const tpoat* __restrict mvMatrix16,const tpoat* __restrict pMatrix16,const int* viewport4,tpoat* objX,tpoat* objY,tpoat* objZ);
 void Teapot_Helper_UnProjectMouseCoords(tpoat* rayOriginOut3,tpoat* rayDirOut3,int mouseX,int mouseY,const tpoat* vpMatrixInv,const int* viewport4);
 int Teapot_Helper_GetMeshUnderMouseFromRayGeneric(int numMeshes,void (*getMeshDataCallback)(int idx,tpoat* __restrict mMatrix16InOut,tpoat aabbMinOut[3],tpoat aabbMaxOut[3],void* userData),const tpoat* rayOrigin3,const tpoat* rayDir3,tpoat* pOptionalDistanceOut,void* userData);
+
+// This should be equivalent to old: glLoadIdentity();gluPickMatrix(x,y,width,height,viewport); [plus glGet(...matrixmode...)]
+tpoat* Teapot_Helper_GetPickMatrix(tpoat* __restrict mOut16,tpoat x,tpoat y,tpoat width,tpoat height,const int* viewport4);
 
 
 static __inline void Teapot_Helper_ConvertMatrixd2f16(float* __restrict result16,const double* __restrict m16) {int i;for(i = 0; i < 16; i++) result16[i]=(float)m16[i];}
@@ -527,6 +550,11 @@ void Teapot_LowLevel_UnbindVertexBufferObject(void);
 void Teapot_LowLevel_DisableVertexAttributes(int disableVertexAttribArray,int disableNormalAttribArray); // args are bool variables (0 or 1)
 void Teapot_LowLevel_UnbindVertexBufferObjectAndDisableVertexAttributes(int disableVertexAttribArray,int disableNormalAttribArray); // args are bool variables (0 or 1)
 
+// These are just the two internal functions that compose Teapot_Helper_IsVisible(...), for advanced users only
+void Teapot_Helper_LowLevel_OBB2AABB(tpoat* __restrict aabbMinMax6Out,const tpoat*__restrict mfMatrix16,tpoat aabbMinX,tpoat aabbMinY,tpoat aabbMinZ,tpoat aabbMaxX,tpoat aabbMaxY,tpoat aabbMaxZ);
+int Teapot_Helper_LowLevel_IsAABBVisible(const tpoat frustumPlanes[6][4],const tpoat* __restrict aabbMinMax6);
+
+
 #if (defined(DYNAMIC_RESOLUTION_H) && defined(TEAPOT_SHADER_USE_SHADOW_MAP))
 #if ((defined(DYNAMIC_RESOLUTION_USE_DOUBLE_PRECISION) && defined(TEAPOT_USE_DOUBLE_PRECISION)) || (!defined(DYNAMIC_RESOLUTION_USE_DOUBLE_PRECISION) && !defined(TEAPOT_USE_DOUBLE_PRECISION)))
 // lpvMatrix16 = lpMatrix16 * lvMatrix16 (light projection and view matrices)
@@ -554,8 +582,22 @@ static __inline void Teapot_HiLevel_DrawMulti_ShadowMap(Teapot_MeshData* const* 
 #ifndef TEAPOT_IMPLEMENTATION_H
 #define TEAPOT_IMPLEMENTATION_H // Additional guard
 
+#ifndef COMPILER_SUPPORTS_GCC_DIAGNOSTIC    // We define this
+#   if (defined(__GNUC__) || defined(__MINGW__) || defined(__clang__))
+#       define COMPILER_SUPPORTS_GCC_DIAGNOSTIC
+#   endif
+#endif
+
+#ifdef COMPILER_SUPPORTS_GCC_DIAGNOSTIC
+#   pragma GCC diagnostic push
+#   pragma GCC diagnostic ignored "-Wpragmas"
+#   pragma GCC diagnostic ignored "-Wunknown-warning-option"
+#   pragma GCC diagnostic ignored "-Wrestrict"
+#endif //COMPILER_SUPPORTS_GCC_DIAGNOSTIC
+
 #include <math.h>   // sqrt
 #include <stdlib.h> // qsort
+#include <string.h> // memcpy
 #ifdef TEAPOT_USE_OPENMP
 #include <omp.h>
 #endif //TEAPOT_USE_OPENMP
@@ -935,6 +977,16 @@ void Teapot_Helper_Ortho(tpoat* __restrict mOut16,tpoat left,tpoat right, tpoat 
     res[14] = (farVal+nearVal)/Dfn;
     res[15] = 1;
 }
+void Teapot_Helper_Ortho3D(tpoat* __restrict mOut16,tpoat cameraTargetDistance,tpoat degfovy,tpoat aspect,tpoat znear,tpoat zfar)   {
+    // Warning: this function might be WRONG! Use it at your own risk!
+    const tpoat FOVTG=tan(degfovy*(tpoat)(3.14159265358979323846/360.0));
+    tpoat y=cameraTargetDistance*FOVTG;//=(zfar-znear)*0.5f;
+    //tpoat y=(cameraTargetDistance<zfar?cameraTargetDistance:zfar)*FOVTG;  // or maybe this?
+    tpoat x=y*aspect;
+    //Teapot_Helper_Ortho(mOut16, -x, x, -y, y, znear, zfar);  // I thought this was correct
+    //Teapot_Helper_Ortho(mOut16, -x, x, -y, y, -zfar, znear);  // But this works better in my test-case
+    Teapot_Helper_Ortho(mOut16, -x, x, -y, y, -zfar, -znear);  // Or maybe this?
+}
 tpoat* Teapot_Helper_TranslateMatrix(tpoat* __restrict mInOut16,tpoat x,tpoat y,tpoat z)  {
 #ifdef TEAPOT_USE_LEGACY_CODE
     const tpoat m[16] = {
@@ -1093,6 +1145,25 @@ void Teapot_Helper_InvertTransformMatrix(tpoat* __restrict mOut16,const tpoat* _
     n[13]=T[0]*n[1] + T[1]*n[5] +T[2]*n[9];
     n[14]=T[0]*n[2] + T[1]*n[6] +T[2]*n[10];
 }
+tpoat* Teapot_Helper_ExtractMatrix3x3Inverse(tpoat* __restrict m9Out,const tpoat* __restrict m16)  {
+    // It works only for rotation + scaling, and only
+    // when rotation can be represented by an unit quaternion
+    const tpoat* m = m16;tpoat* n = m9Out;int i,i4,i4p1,i4p2;
+    // Step 1. Transpose the 3x3 submatrix
+    n[0]=m[0];n[1]=m[4];n[2]=m[8];
+    n[3]=m[1];n[4]=m[5];n[5]=m[9];
+    n[6]=m[2];n[7]=m[6];n[8]=m[10];
+    // Step 2. Adjust scaling
+    for (i=0;i<3;i++)	{
+        tpoat rsi;
+        i4=4*i;i4p1=i4+1;i4p2=i4p1+1;
+        rsi = m[i4]*m[i4]+m[i4p1]*m[i4p1]+m[i4p2]*m[i4p2];
+        if (rsi>1.e-8f) rsi=(tpoat)1.0/rsi;
+        else rsi=(tpoat)1.0;
+        n[i]*=rsi;n[i+3]*=rsi;n[i+6]*=rsi;
+    }
+    return m9Out;
+}
 void Teapot_Helper_InvertTransformMatrixFast(tpoat* __restrict mOut16,const tpoat* __restrict m16)	{
     // It works only for translation + rotation, and only
     // when rotation can be represented by an unit quaternion
@@ -1113,7 +1184,38 @@ void Teapot_Helper_InvertTransformMatrixFast(tpoat* __restrict mOut16,const tpoa
     //w    =T[0]*n[3] + T[1]*n[7] +T[2]*n[11];
     //if (w!=0 && w!=1) {n[12]/=w;n[13]/=w;n[14]/=w;} // These last 2 lines are not strictly necessary AFAIK
 }
+tpoat* Teapot_Helper_ExtractMatrix3x3InverseFast(tpoat* __restrict m9Out,const tpoat* __restrict m16)  {
+    // It works only for rotation without scaling, and only
+    // when rotation can be represented by an unit quaternion
+    const tpoat* m = m16;
+    tpoat* n = m9Out;
+    // Just transpose the 3x3 submatrix
+    /*
+        m[0] m[1] m[2]
+        m[4] m[5] m[6]
+        m[8] m[9] m[10]
 
+    */
+    n[0]=m[0];n[1]=m[4];n[2]=m[8];
+    n[3]=m[1];n[4]=m[5];n[5]=m[9];
+    n[6]=m[2];n[7]=m[6];n[8]=m[10];
+    return m9Out;
+}
+
+void Teapot_Helper_InvertTransformMatrixXZAxisInPlace(tpoat* __restrict m16)	{
+    tpoat* d = m16;
+    d[0]=-d[0]; d[8] =-d[8];
+    d[1]=-d[1]; d[9] =-d[9];
+    d[2]=-d[2]; d[10]=-d[10];
+}
+tpoat* Teapot_Helper_InvertTransformMatrixXZAxis(tpoat* __restrict mOut16,const tpoat* __restrict m16)	{
+    tpoat* d = mOut16;const tpoat* s = m16;
+    d[0]=-s[0]; d[4]=s[4]; d[8] = -s[8]; d[12]=s[12];
+    d[1]=-s[1]; d[5]=s[5]; d[9] = -s[9]; d[13]=s[13];
+    d[2]=-s[2]; d[6]=s[6]; d[10]=-s[10]; d[14]=s[14];
+    d[3]= s[3]; d[7]=s[7]; d[11]= s[11]; d[15]=s[15];
+    return mOut16;
+}
 void Teapot_Helper_GetFrustumPlaneEquations(tpoat planeEquationsOut[6][4],const tpoat* __restrict vpMatrix16,int normalizePlanes)   {
     // ax+by+cz+d=0 [xl,xr,yb,yt,zn,zf],normalizePlanes=0 -> no normalization
     tpoat m00 = vpMatrix16[0], m01 = vpMatrix16[4], m02 = vpMatrix16[8],  m03 = vpMatrix16[12];
@@ -1122,17 +1224,18 @@ void Teapot_Helper_GetFrustumPlaneEquations(tpoat planeEquationsOut[6][4],const 
     tpoat m30 = vpMatrix16[3], m31 = vpMatrix16[7], m32 = vpMatrix16[11], m33 = vpMatrix16[15];
     tpoat* p = NULL;
     p = &planeEquationsOut[0][0];   // Left
-    p[0] = m30+m00; p[1] = m31+m01; p[2] = m32+m02; p[3] = m33+m03;if (normalizePlanes) Teapot_Helper_NormalizePlane(p);
+    p[0] = m30+m00; p[1] = m31+m01; p[2] = m32+m02; p[3] = m33+m03;
     p = &planeEquationsOut[1][0];   // Right
-    p[0] = m30-m00; p[1] = m31-m01; p[2] = m32-m02; p[3] = m33-m03;if (normalizePlanes) Teapot_Helper_NormalizePlane(p);
+    p[0] = m30-m00; p[1] = m31-m01; p[2] = m32-m02; p[3] = m33-m03;
     p = &planeEquationsOut[2][0];   // Bottom
-    p[0] = m30+m10; p[1] = m31+m11; p[2] = m32+m12; p[3] = m33+m13;if (normalizePlanes) Teapot_Helper_NormalizePlane(p);
+    p[0] = m30+m10; p[1] = m31+m11; p[2] = m32+m12; p[3] = m33+m13;
     p = &planeEquationsOut[3][0];   // Top
-    p[0] = m30-m10; p[1] = m31-m11; p[2] = m32-m12; p[3] = m33-m13;if (normalizePlanes) Teapot_Helper_NormalizePlane(p);
+    p[0] = m30-m10; p[1] = m31-m11; p[2] = m32-m12; p[3] = m33-m13;
     p = &planeEquationsOut[4][0];   // Near
-    p[0] = m30+m20; p[1] = m31+m21; p[2] = m32+m22; p[3] = m33+m23;if (normalizePlanes) Teapot_Helper_NormalizePlane(p);
+    p[0] = m30+m20; p[1] = m31+m21; p[2] = m32+m22; p[3] = m33+m23;
     p = &planeEquationsOut[5][0];   // Far
-    p[0] = m30-m20; p[1] = m31-m21; p[2] = m32-m22; p[3] = m33-m23;if (normalizePlanes) Teapot_Helper_NormalizePlane(p);
+    p[0] = m30-m20; p[1] = m31-m21; p[2] = m32-m22; p[3] = m33-m23;
+    if (normalizePlanes) {int i;for (i=0;i<6;i++) Teapot_Helper_NormalizePlane(&planeEquationsOut[i][0]);}
 }
 void Teapot_Helper_GetFrustumPoints(tpoat frustumPoints[8][4],const tpoat* __restrict vpMatrixInverse16)    {
     const tpoat v[8][4] = {{-1, -1, -1, 1},{-1,  1, -1, 1},{ 1,  1, -1, 1},{ 1, -1, -1, 1},{-1, -1, 1, 1},{-1,  1, 1, 1},{ 1,  1, 1, 1},{ 1, -1, 1, 1}};
@@ -1458,6 +1561,33 @@ int Teapot_Helper_IsVisible(const tpoat frustumPlanes[6][4],const tpoat*__restri
 
     return 1;
 }
+void Teapot_Helper_LowLevel_OBB2AABB(tpoat* __restrict aabbMinMax6Out,const tpoat*__restrict mfMatrix16,tpoat aabbMinX,tpoat aabbMinY,tpoat aabbMinZ,tpoat aabbMaxX,tpoat aabbMaxY,tpoat aabbMaxZ) {
+    // First part of Teapot_Helper_IsVisible(...)
+    const tpoat* m = mfMatrix16;tpoat* aabb = aabbMinMax6Out;int i;
+    for (i=0;i<3;i++)   {
+        const tpoat a0i=m[i]*aabbMinX,b0i=m[i]*aabbMaxX,a3i=m[4+i]*aabbMinY,b3i=m[4+i]*aabbMaxY,a6i=m[8+i]*aabbMinZ,b6i=m[8+i]*aabbMaxZ,m12i = m[12+i];
+        tpoat vmin,vmax;
+        if (a0i<b0i)    {vmin = (a0i+m12i); vmax = (b0i+m12i);}
+        else            {vmin = (b0i+m12i); vmax = (a0i+m12i);}
+        if (a3i<b3i)    {vmin+= a3i;        vmax+= b3i;}
+        else            {vmin+= b3i;        vmax+= a3i;}
+        if (a6i<b6i)    {vmin+= a6i;        vmax+= b6i;}
+        else            {vmin+= b6i;        vmax+= a6i;}
+        aabb[i] = vmin;aabb[3+i] = vmax;
+    }
+}
+int Teapot_Helper_LowLevel_IsAABBVisible(const tpoat frustumPlanes[6][4],const tpoat* __restrict aabbMinMax6) {
+    // Second part of Teapot_Helper_IsVisible(...)
+    const tpoat* aabb = aabbMinMax6;const tpoat zero = (tpoat)0;int i;
+    for(i=0; i < 6; i++) {
+        const tpoat *pl = &frustumPlanes[i][0];
+        const int p[3] = {3*(int)(pl[0]>zero),3*(int)(pl[1]>zero),3*(int)(pl[2]>zero)};   // p[j] = 0 or 3
+        const tpoat dp = pl[0]*aabb[p[0]] + pl[1]*aabb[p[1]+1] + pl[2]*aabb[p[2]+2] + pl[3];
+        if (dp < 0) return 0;
+    }
+    return 1;
+}
+
 int Teapot_Helper_UnProject_MvpMatrixInv(tpoat winX,tpoat winY,tpoat winZ,const tpoat* __restrict mvpMatrixInv16,const int* viewport4,tpoat* objX,tpoat* objY,tpoat* objZ)    {
     // To compute the coordinates objX objY objZ , gluUnProject multiplies the normalized device coordinates by the inverse of model * proj as follows:
     // [objX objY objZ W] = INV(P*M) * ⁢ [2*(winX-view[0])/view[2]-1    2*(winY-view[1])/view[3]-1  2*winZ-1    1]
@@ -1501,6 +1631,17 @@ void Teapot_Helper_ExtractScalingFromTransformMatrix(const tpoat* __restrict m16
     //fprintf(stderr,"Extracted scaling: %1.4f,%1.4f,%1.4f\n",tmp[0],tmp[1],tmp[2]);
 }
 
+tpoat* Teapot_Helper_ExtractMatrix3x3(tpoat* __restrict m9Out,const tpoat* __restrict m16,tpoat* __restrict optionalTranslation3Out/*=NULL*/)  {
+    int i,j;for (i=0;i<3;i++) {for (j=0;j<3;j++)   m9Out[i*3+j] = m16[i*4+j];}
+    if (optionalTranslation3Out) {for (j=0;j<3;j++)   optionalTranslation3Out[j] = m16[12+j];}
+    return m9Out;
+}
+
+int Teapot_Helper_UnProject(tpoat winX,tpoat winY,tpoat winZ,const tpoat* __restrict mvMatrix16,const tpoat* __restrict pMatrix16,const int* viewport4,tpoat* objX,tpoat* objY,tpoat* objZ) {
+    tpoat mvpMatrixInv[16];Teapot_Helper_MultMatrix(mvpMatrixInv,pMatrix16,mvMatrix16);Teapot_Helper_InvertMatrix(mvpMatrixInv,mvpMatrixInv);
+    return Teapot_Helper_UnProject_MvpMatrixInv(winX,winY,winZ,mvpMatrixInv,viewport4,objX,objY,objZ);
+}
+
 void Teapot_Helper_UnProjectMouseCoords(tpoat* rayOriginOut3,tpoat* rayDirOut3,int mouseX,int mouseY,const tpoat* vpMatrixInv,const int* viewport4) {
     // rayOriginOut3 and rayDirOut3 are in world space
     tpoat rayOrigin[3] = {0,0,0};
@@ -1531,75 +1672,77 @@ Teapot_MeshData* Teapot_MeshData_GetMeshUnderMouseFromRay(Teapot_MeshData* const
     // Code based on: http://www.opengl-tutorial.org/miscellaneous/clicking-on-objects/picking-with-custom-ray-obb-function/ (WTFPL Public Licence)
     for (i=0;i<numMeshes;i++)   {
         const Teapot_MeshData* md = meshes[i];
-        const tpoat* obbMatrix = md->mMatrix;
-        const TeapotMeshEnum meshId = md->meshId;
-        tpoat tMin = 0;tpoat tMax = (tpoat)1000000000000;
-        int noCollisionDetected = 0;
-        tpoat obbPosDelta[3] =  {obbMatrix[12]-rayOrigin3[0],obbMatrix[13]-rayOrigin3[1],obbMatrix[14]-rayOrigin3[2]};
-        //const float scaling[3] = {meshId==TEAPOT_MESH_CAPSULE ? ((md->scaling[0]+md->scaling[2])*0.5) : md->scaling[0],md->scaling[1],meshId==TEAPOT_MESH_CAPSULE ? ((md->scaling[0]+md->scaling[2])*0.5) : md->scaling[2]};
-        const float* scaling = md->scaling;
-        tpoat aabbMin[3] = {TIS.aabbMin[meshId][0]*scaling[0],TIS.aabbMin[meshId][1]*scaling[1],TIS.aabbMin[meshId][2]*scaling[2]};
-        tpoat aabbMax[3] = {TIS.aabbMax[meshId][0]*scaling[0],TIS.aabbMax[meshId][1]*scaling[1],TIS.aabbMax[meshId][2]*scaling[2]};
-        //Teapot_Helper_Vector3Normalize(obbPosDelta);
-        //for (j=0;j<3;j++) obbPosDelta[i]=-obbPosDelta[i];
+        if (md->active) {
+            const tpoat* obbMatrix = md->mMatrix;
+            const TeapotMeshEnum meshId = md->meshId;
+            tpoat tMin = 0;tpoat tMax = (tpoat)1000000000000;
+            int noCollisionDetected = 0;
+            tpoat obbPosDelta[3] =  {obbMatrix[12]-rayOrigin3[0],obbMatrix[13]-rayOrigin3[1],obbMatrix[14]-rayOrigin3[2]};
+            //const float scaling[3] = {meshId==TEAPOT_MESH_CAPSULE ? ((md->scaling[0]+md->scaling[2])*0.5) : md->scaling[0],md->scaling[1],meshId==TEAPOT_MESH_CAPSULE ? ((md->scaling[0]+md->scaling[2])*0.5) : md->scaling[2]};
+            const float* scaling = md->scaling;
+            tpoat aabbMin[3] = {TIS.aabbMin[meshId][0]*scaling[0],TIS.aabbMin[meshId][1]*scaling[1],TIS.aabbMin[meshId][2]*scaling[2]};
+            tpoat aabbMax[3] = {TIS.aabbMax[meshId][0]*scaling[0],TIS.aabbMax[meshId][1]*scaling[1],TIS.aabbMax[meshId][2]*scaling[2]};
+            //Teapot_Helper_Vector3Normalize(obbPosDelta);
+            //for (j=0;j<3;j++) obbPosDelta[i]=-obbPosDelta[i];
 
-        if (md->meshId==TEAPOT_MESH_CAPSULE) {
-            // Sorry, but capsules are special
-            const float sphereScaling = (md->scaling[0]+md->scaling[2])*0.5;
+            if (md->meshId==TEAPOT_MESH_CAPSULE) {
+                // Sorry, but capsules are special
+                const float sphereScaling = (md->scaling[0]+md->scaling[2])*0.5;
 #           ifndef TEAPOT_CENTER_MESHES_ON_FLOOR
-            aabbMin[1]+=0.5*(md->scaling[1]-2.0*sphereScaling);
-            aabbMax[1]-=0.5*(md->scaling[1]-2.0*sphereScaling);
+                aabbMin[1]+=0.5*(md->scaling[1]-2.0*sphereScaling);
+                aabbMax[1]-=0.5*(md->scaling[1]-2.0*sphereScaling);
 #           else //TEAPOT_CENTER_MESHES_ON_FLOOR
-            aabbMax[1]-=0.5*(md->scaling[1]-2.0*sphereScaling);
+                aabbMax[1]-=0.5*(md->scaling[1]-2.0*sphereScaling);
 #           endif //TEAPOT_CENTER_MESHES_ON_FLOOR
-            //printf("TEAPOT_MESH_CAPSULE: aabbMin(%1.3f,%1.3f,%1.3f) aabbMax(%1.3f,%1.3f,%1.3f) md->scaling[1]=%1.3f sphereScaling=%1.3f TIS.halfExtents[TEAPOT_MESH_HALF_SPHERE_DOWN][1]=%1.3f\n",aabbMin[0],aabbMin[1],aabbMin[2],aabbMax[0],aabbMax[1],aabbMax[2],md->scaling[1],sphereScaling,TIS.halfExtents[TEAPOT_MESH_HALF_SPHERE_DOWN][1]);
-        }
+                //printf("TEAPOT_MESH_CAPSULE: aabbMin(%1.3f,%1.3f,%1.3f) aabbMax(%1.3f,%1.3f,%1.3f) md->scaling[1]=%1.3f sphereScaling=%1.3f TIS.halfExtents[TEAPOT_MESH_HALF_SPHERE_DOWN][1]=%1.3f\n",aabbMin[0],aabbMin[1],aabbMin[2],aabbMax[0],aabbMax[1],aabbMax[2],md->scaling[1],sphereScaling,TIS.halfExtents[TEAPOT_MESH_HALF_SPHERE_DOWN][1]);
+            }
 
-        for (j=0;j<3;j++)   {
-            if (!noCollisionDetected)   {
-                int j4 = 4*j;
-                // Test intersection with the 2 planes perpendicular to the OBB's j axis
+            for (j=0;j<3;j++)   {
+                if (!noCollisionDetected)   {
+                    int j4 = 4*j;
+                    // Test intersection with the 2 planes perpendicular to the OBB's j axis
 #               ifdef OLD_CODE
-                const tpoat axis[3] = {obbMatrix[j4],obbMatrix[j4+1],obbMatrix[j4+2]};
-                const tpoat e = Teapot_Helper_Vector3Dot(axis, obbPosDelta);
-                const tpoat f = Teapot_Helper_Vector3Dot(rayDir3, axis);
+                    const tpoat axis[3] = {obbMatrix[j4],obbMatrix[j4+1],obbMatrix[j4+2]};
+                    const tpoat e = Teapot_Helper_Vector3Dot(axis, obbPosDelta);
+                    const tpoat f = Teapot_Helper_Vector3Dot(rayDir3, axis);
 #               else /* this works for scaling inside 'obbMatrix == md->mMatrix' too (but I'm not sure about TEAPOT_MESH_CAPSULE) */
-                tpoat axis[3] = {obbMatrix[j4],obbMatrix[j4+1],obbMatrix[j4+2]},e,f;
-                tpoat sca = Teapot_Helper_Vector3Dot(axis,axis);
-                if (sca<(tpoat)0.00009 || sca>(tpoat)1.00001) {
-                    sca = sqrt(sca);
-                    aabbMin[j]*=sca;aabbMax[j]*=sca;
-                    sca=(tpoat)1/sca;axis[0]*=sca;axis[1]*=sca;axis[2]*=sca;
-                }
-                e = Teapot_Helper_Vector3Dot(axis, obbPosDelta);
-                f = Teapot_Helper_Vector3Dot(rayDir3, axis);
+                    tpoat axis[3] = {obbMatrix[j4],obbMatrix[j4+1],obbMatrix[j4+2]},e,f;
+                    tpoat sca = Teapot_Helper_Vector3Dot(axis,axis);
+                    if (sca<(tpoat)0.00009 || sca>(tpoat)1.00001) {
+                        sca = sqrt(sca);
+                        aabbMin[j]*=sca;aabbMax[j]*=sca;
+                        sca=(tpoat)1/sca;axis[0]*=sca;axis[1]*=sca;axis[2]*=sca;
+                    }
+                    e = Teapot_Helper_Vector3Dot(axis, obbPosDelta);
+                    f = Teapot_Helper_Vector3Dot(rayDir3, axis);
 #               endif
-                //if ( abs(f) > 0.001)  // @Flix: the reference code used this (but it does not work for me; so maybe my selection does not work with a projection ortho matrix...)
-                {
-                    // Standard case
-                    // t1 and t2 now contain distances betwen ray origin and ray-plane intersections:
-                    tpoat t1 = (e+aabbMin[j])/f; // Intersection with the "left" plane
-                    tpoat t2 = (e+aabbMax[j])/f; // Intersection with the "right" plane
-                    // We want t1 to represent the nearest intersection, so if it's not the case, invert t1 and t2
-                    if (t1>t2)  {tpoat w=t1;t1=t2;t2=w;}
-                    if (t2 < tMax)    tMax = t2;
-                    if (t1 > tMin)    tMin = t1;
-                    // And here's the trick :
-                    // If "far" is closer than "near", then there is NO intersection.
-                    // See the images in the tutorials for the visual explanation.
-                    if (tMin > tMax) noCollisionDetected=1;
+                    //if ( abs(f) > 0.001)  // @Flix: the reference code used this (but it does not work for me; so maybe my selection does not work with a projection ortho matrix...)
+                    {
+                        // Standard case
+                        // t1 and t2 now contain distances betwen ray origin and ray-plane intersections:
+                        tpoat t1 = (e+aabbMin[j])/f; // Intersection with the "left" plane
+                        tpoat t2 = (e+aabbMax[j])/f; // Intersection with the "right" plane
+                        // We want t1 to represent the nearest intersection, so if it's not the case, invert t1 and t2
+                        if (t1>t2)  {tpoat w=t1;t1=t2;t2=w;}
+                        if (t2 < tMax)    tMax = t2;
+                        if (t1 > tMin)    tMin = t1;
+                        // And here's the trick :
+                        // If "far" is closer than "near", then there is NO intersection.
+                        // See the images in the tutorials for the visual explanation.
+                        if (tMin > tMax) noCollisionDetected=1;
 
-                }
-                /*else    {
+                    }
+                    /*else    {
                     // Rare case : the ray is almost parallel to the planes, so they don't have any "intersection"
                     if(-e+aabbMin[j] > 0.0 || -e+aabbMax[j] < 0.0) noCollisionDetected=1;
                 }*/
+                }
             }
-        }
 
-        if (!noCollisionDetected && (intersection_distance<=0 || intersection_distance>tMin))   {
-            intersection_distance = tMin;
-            rv = (Teapot_MeshData*) md;
+            if (!noCollisionDetected && (intersection_distance<=0 || intersection_distance>tMin))   {
+                intersection_distance = tMin;
+                rv = (Teapot_MeshData*) md;
+            }
         }
     }
 
@@ -1644,7 +1787,7 @@ int Teapot_Helper_GetMeshUnderMouseFromRayGeneric(int numMeshes,void (*getMeshDa
                 f = Teapot_Helper_Vector3Dot(rayDir3, axis);
 #               endif
 
-                //if ( abs(f) > 0.001)  // @Flix: the reference code used this (but it does not work for me; so maybe my selection does not work with a projection ortho matrix...)
+                //if ( abs(f) > 0.001)  // @Flix: the reference code used this (but it does not work for me; so maybe my selection does not work with a projection ortho matrix...)... (or maybe it's just fabs instead of abs...)
                 {
                     // Standard case
                     // t1 and t2 now contain distances betwen ray origin and ray-plane intersections:
@@ -1689,6 +1832,18 @@ Teapot_MeshData* Teapot_MeshData_GetMeshUnderMouse(Teapot_MeshData* const* meshe
     Teapot_Helper_UnProjectMouseCoords(rayOrigin,rayDir,mouseX,mouseY,vpMatrixInv,viewport4);
 
     return Teapot_MeshData_GetMeshUnderMouseFromRay(meshes,numMeshes,rayOrigin,rayDir,pOptionalDistanceOut);
+}
+
+tpoat* Teapot_Helper_GetPickMatrix(tpoat* __restrict mOut16,tpoat x,tpoat y,tpoat width,tpoat height,const int* viewport4) {
+    tpoat *m = mOut16,sx,sy;int i;
+    if (width<=0 || height<=0)  return m;
+    m[0]=m[5]=m[10]=m[15]=1;
+    m[1]=m[2]=m[3]=m[4]=m[6]=m[7]=m[8]=m[9]=m[11]=m[14]=0;
+    m[12]=(viewport4[2]-2*(x-viewport4[0]))/width;
+    m[13]=(viewport4[3]-2*(y-viewport4[1]))/height;
+    sx=viewport4[2]/width;sy=viewport4[3]/height;
+    for (i=0;i<3;i++) {m[i]*=sx;m[4+i]*=sy;}
+    return m;
 }
 
 
@@ -2238,6 +2393,23 @@ void Teapot_Draw_Mv(const tpoat mvMatrix[16], TeapotMeshEnum meshId)    {
                 Teapot_SetColor(pushColor[0],pushColor[1],pushColor[2],pushColor[3]);
             }
             break;
+            case TEAPOT_MESH_FLIPPER_RIGHT:
+            case TEAPOT_MESH_FLIPPER_LEFT:  {
+                int startInds = TIS.startInds[meshId];
+                const int numInds[2] = {384,180};       // Rubber, White
+                const float pushColor[4] = {TIS.color[0],TIS.color[1],TIS.color[2],TIS.color[3]};
+
+                glDrawElements(GL_TRIANGLES,numInds[0],GL_UNSIGNED_SHORT,(const void*) (startInds*sizeof(unsigned short)));
+                startInds+=numInds[0];
+
+                Teapot_SetColor(0.9f,0.9f,0.9f,pushColor[3]);
+                glDrawElements(GL_TRIANGLES,numInds[1],GL_UNSIGNED_SHORT,(const void*) (startInds*sizeof(unsigned short)));
+                startInds+=numInds[1];
+                //if (startInds!=TIS.startInds[meshId]+TIS.numInds[meshId]) {printf("ERROR: startInds(=%d)!=TIS.startInds[%d](=%d)+TIS.numInds[%d](=%d)\n",startInds,(int)meshId,TIS.startInds[meshId],(int)meshId,TIS.numInds[meshId]);exit(1);}
+
+                Teapot_SetColor(pushColor[0],pushColor[1],pushColor[2],pushColor[3]);
+            }
+            break;
             case TEAPOT_MESH_SLEDGE: {
                 int startInds = TIS.startInds[meshId];
                 const int numInds[2] = {68*3,144*3};
@@ -2285,6 +2457,65 @@ void Teapot_Draw(const tpoat mMatrix[16], TeapotMeshEnum meshId) {
     Teapot_Draw_Mv(mvMatrix,meshId);
 }
 
+
+void Teapot_DrawAabb_Mv(const tpoat mvMatrix[16], TeapotMeshEnum meshId, const float *scaling3)   {
+    // user should set color and line width before the call (scaling is discarded)
+    if (meshId<TEAPOT_MESH_PIVOT3D) {
+        float pushScaling[3] = {TIS.scaling[0],TIS.scaling[1],TIS.scaling[2]};
+        float scaling[3],userScaling[3],aabb[3],center[3];
+        tpoat mat[16];int k;
+
+        // Fill 'userScaling':
+        if (scaling3) {userScaling[0]=scaling3[0];userScaling[1]=scaling3[1];userScaling[2]=scaling3[2];}
+        else userScaling[0]=userScaling[1]=userScaling[2]=1.f;
+
+        // Fill 'scaling':
+        Teapot_GetMeshAabbExtents(meshId,aabb);
+        if (meshId==TEAPOT_MESH_CAPSULE)    {
+            // Sorry, but capsules are special (Teapot_SetScaling(...) does not scale them, because we want the two half-spheres to be always regular)
+            const float sphereScaling = (userScaling[0]+userScaling[2])*0.5;
+            scaling[0]=aabb[0]*sphereScaling;scaling[2]=aabb[2]*sphereScaling;
+            aabb[1]*=userScaling[1];aabb[1]-=1.0*(userScaling[1]-sphereScaling);
+            scaling[1] = aabb[1];
+        }
+        else {int i;for (i=0;i<3;i++) scaling[i]=aabb[i]*userScaling[i];}
+
+        // Apply scaling:
+        Teapot_SetScaling(scaling[0],scaling[1],scaling[2]);
+
+        // Well, these lines that replace 'mvMatrix' with 'mat' are just for the meshes
+        // that are not centered in {0,0,0} (like FLIPPER meshes).
+        Teapot_Helper_CopyMatrix(mat,mvMatrix);
+        center[0] = TIS.centerPoint[meshId][0]*userScaling[0];
+        center[1] = TIS.centerPoint[meshId][1]*userScaling[1];
+        center[2] = TIS.centerPoint[meshId][2]*userScaling[2];
+        for (k=0;k<3;k++) mat[12+k]+=mat[k]*center[0]+mat[k+4]*center[1]+mat[k+8]*center[2];
+
+        // Draw an AABB around the shape:
+        Teapot_Draw_Mv(mat,TEAPOT_MESHLINES_CUBE_EDGES);
+
+        // Pop scaling:
+        Teapot_SetScaling(pushScaling[0],pushScaling[1],pushScaling[2]);
+    }
+}
+void Teapot_DrawAabb_MvFloat(const float mvMatrix[16],TeapotMeshEnum meshId,const float* scaling3)  {
+#   ifndef TEAPOT_USE_DOUBLE_PRECISION
+    Teapot_DrawAabb_Mv(mvMatrix,meshId,scaling3);
+#   else
+    tpoat tmp[16];Teapot_Helper_ConvertMatrixf2d16(tmp,mvMatrix);
+    Teapot_DrawAabb_Mv(tmp,meshId,scaling3);
+#   endif
+}
+void Teapot_DrawAabb(const tpoat mMatrix[16],TeapotMeshEnum meshId,const float* scaling3)   {
+    tpoat mvMatrix[16]; // mvMatrix = vMatrix * mMatrix;
+    if (meshId>=TEAPOT_MESH_PIVOT3D) return;
+    Teapot_Helper_MultMatrix(mvMatrix,TIS.vMatrix,mMatrix);
+    Teapot_DrawAabb_Mv(mvMatrix,meshId,scaling3);
+}
+
+
+
+
 void Teapot_LowLevel_StartDisablingLighting(void) {
     TIS.colorAmbient[0]=TIS.colorAmbient[1]=TIS.colorAmbient[2]=0.8f;TIS.colorAmbient[3]=0.f;
     glUniform4fv(TIS.uLoc_colorAmbient,1,TIS.colorAmbient);
@@ -2318,19 +2549,15 @@ void Teapot_PostDraw(void)  {
 }
 
 
-static int _Teapot_MeshData_Comparer(const void* pmd0,const void* pmd1) {
+int Teapot_MeshData_Depth_Sorter(const void* pmd0,const void* pmd1) {
     const Teapot_MeshData* md0 = *((const Teapot_MeshData* const*) (pmd0));
     const Teapot_MeshData* md1 = *((const Teapot_MeshData* const*) (pmd1));
     if (md0->color[3]<1.f)   {
-        if (md1->color[3]<1.f) {
-            return md1->mvMatrix[14]>md0->mvMatrix[14]?-1:1;
-            //return fabsf(md1->mvMatrix[14])-fabsf(md0->mvMatrix[14]);
-            //return (md1->mvMatrix[12]*md1->mvMatrix[12]+md1->mvMatrix[13]*md1->mvMatrix[13]+md1->mvMatrix[14]*md1->mvMatrix[14]) -
-            //        (md0->mvMatrix[12]*md0->mvMatrix[12]+md0->mvMatrix[13]*md0->mvMatrix[13]+md0->mvMatrix[14]*md0->mvMatrix[14]);
-	}
+        if (md1->color[3]<1.f) return md1->mvMatrix[14]>md0->mvMatrix[14]?-1:1;
         else return 1;
     }
     else if (md1->color[3]<1.f) return -1;
+    else return md1->mvMatrix[14]<md0->mvMatrix[14]?-1:1;   // optional new line: opaque object sorted front to back
     return 0;
 }
 
@@ -2340,7 +2567,10 @@ void Teapot_MeshData_Clear(Teapot_MeshData* md) {
     md->colorAmbient[0]=md->colorAmbient[1]=md->colorAmbient[2]=0.25f;
     md->colorSpecular[0]=md->colorSpecular[1]=md->colorSpecular[2]=0.8f;md->colorSpecular[3]=20.f;
     md->scaling[0]=md->scaling[1]=md->scaling[2]=1.f;
-    md->outlineEnabled = 0;md->userPtr=0;
+    md->outlineEnabled = 0;md->active=1;
+#   ifndef TEAPOT_MESHDATA_STRUCT_EXTRA_FIELDS
+    md->userPtr=0;
+#   endif
 }
 #ifdef __cplusplus
 _Teapot_MeshData::_Teapot_MeshData() {Teapot_MeshData_Clear(this);}
@@ -2352,14 +2582,26 @@ void Teapot_MeshData_SetMMatrix(Teapot_MeshData* md, const tpoat* mMatrix16) {Te
 void Teapot_MeshData_CalculateMvMatrix(Teapot_MeshData* md) {Teapot_Helper_MultMatrixUncheckArgs(md->mvMatrix,TIS.vMatrix,md->mMatrix);}
 
 #ifndef TEAPOT_USE_OPENMP
-void Teapot_MeshData_CalculateMvMatrixFromArray(Teapot_MeshData** meshes,int numMeshes) {int i;if (!meshes || numMeshes<=0) return;for (i=0;i<numMeshes;i++) Teapot_MeshData_CalculateMvMatrix(meshes[i]);}
+void Teapot_MeshData_CalculateMvMatrixFromArray(Teapot_MeshData** meshes,int numMeshes) {
+    int i;if (!meshes || numMeshes<=0) return;
+    for (i=0;i<numMeshes;i++) {
+        Teapot_MeshData* md = meshes[i];
+#       ifdef TEAPOT_CALCULATEMVMATRIXFROMARRAY_EXCLUDES_INACTIVE_MESHDATA
+        if (md->active) // optional
+#       endif
+            Teapot_Helper_MultMatrixUncheckArgs(md->mvMatrix,TIS.vMatrix,md->mMatrix);
+    }
+}
 #else //TEAPOT_USE_OPENMP
 void Teapot_MeshData_CalculateMvMatrixFromArray(Teapot_MeshData** meshes,int numMeshes) {
     int i;if (!meshes || numMeshes<=0) return;
 #   pragma omp parallel
     for (i=0;i<numMeshes;i++) {
         Teapot_MeshData* md = meshes[i];
-        Teapot_Helper_MultMatrix(md->mvMatrix,TIS.vMatrix,md->mMatrix);
+#       ifdef TEAPOT_CALCULATEMVMATRIXFROMARRAY_EXCLUDES_INACTIVE_MESHDATA
+        if (md->active) // optional
+#       endif
+            Teapot_Helper_MultMatrixUncheckArgs(md->mvMatrix,TIS.vMatrix,md->mMatrix);
     }
 }
 #endif //TEAPOT_USE_OPENMP
@@ -2370,30 +2612,34 @@ void Teapot_DrawMulti(Teapot_MeshData** meshes,int numMeshes,int mustSortObjects
 }
 void Teapot_DrawMulti_Mv(Teapot_MeshData* const* meshes,int numMeshes,int mustSortObjectsForTransparency)  {
     if (!meshes || numMeshes<=0) return;
-    if (mustSortObjectsForTransparency) qsort((void*)meshes,numMeshes,sizeof(Teapot_MeshData*),_Teapot_MeshData_Comparer);
+    if (mustSortObjectsForTransparency) qsort((void*)meshes,numMeshes,sizeof(Teapot_MeshData*),Teapot_MeshData_Depth_Sorter);
     {
         const int pushMeshOutlineEnabled = TIS.meshOutlineEnabled;
         int i,startTransparentObjects=mustSortObjectsForTransparency?0:-1;
         for (i=0;i<numMeshes;i++) {
             const Teapot_MeshData* md = meshes[i];
-            TIS.meshOutlineEnabled = md->outlineEnabled;
-            if (!TIS.colorMaterialEnabled)  {
+            if (md->active) {
+                TIS.meshOutlineEnabled = md->outlineEnabled;
+                if (!TIS.colorMaterialEnabled)  {
 #               ifdef TEAPOT_SHADER_SPECULAR
-                Teapot_SetColorAmbientDiffuseAndSpecular(md->colorAmbient,md->color,md->colorSpecular);
+                    Teapot_SetColorAmbientDiffuseAndSpecular(md->colorAmbient,md->color,md->colorSpecular);
 #               else //TEAPOT_SHADER_SPECULAR
-                Teapot_SetColorAmbientAndDiffuse(md->colorAmbient,md->color);
+                    Teapot_SetColorAmbientAndDiffuse(md->colorAmbient,md->color);
 #               endif //TEAPOT_SHADER_SPECULAR
+                }
+                else Teapot_SetColor(md->color[0],md->color[1],md->color[2],md->color[3]);
+                Teapot_SetScaling(md->scaling[0]==0?1:md->scaling[0],md->scaling[1]==0?1:md->scaling[1],md->scaling[2]==0?1:md->scaling[2]);
+                if (md->color[3]<1.f && startTransparentObjects==0) {
+                    startTransparentObjects=1;
+                    glDepthMask(GL_FALSE);
+                    glEnable(GL_BLEND);
+                }
+                if (md->color[3]!=0) Teapot_Draw_Mv(md->mvMatrix,md->meshId);
             }
-            else Teapot_SetColor(md->color[0],md->color[1],md->color[2],md->color[3]);
-            Teapot_SetScaling(md->scaling[0]==0?1:md->scaling[0],md->scaling[1]==0?1:md->scaling[1],md->scaling[2]==0?1:md->scaling[2]);
-            if (md->color[3]<1.f && startTransparentObjects==0) {
-                startTransparentObjects=1;
-                glEnable(GL_BLEND);
-            }
-            if (md->color[3]!=0) Teapot_Draw_Mv(md->mvMatrix,md->meshId);
         }
         if (startTransparentObjects==1) {
             glDisable(GL_BLEND);
+            glDepthMask(GL_TRUE);
         }
         TIS.meshOutlineEnabled = pushMeshOutlineEnabled;
     }
@@ -2443,6 +2689,7 @@ static __inline void Teapot_Private_DrawArmatureBone(const tpoat mMatrix16[16],t
 void Teapot_Helper_DrawArmatureBone(const tpoat mMatrix[16],tpoat length)   {Teapot_Private_DrawArmatureBone(mMatrix,length,&Teapot_Draw);}
 void Teapot_Helper_DrawArmatureBone_Mv(const tpoat mvMatrix[16],tpoat length)   {Teapot_Private_DrawArmatureBone(mvMatrix,length,&Teapot_Draw_Mv);}
 
+void Teapot_MeshData_DrawAabb(const Teapot_MeshData* mesh)  {if (mesh)   Teapot_DrawAabb(mesh->mMatrix,mesh->meshId,mesh->scaling);}
 
 // Loading shader function
 static __inline GLhandleARB Teapot_LoadShader(const char* buffer, const unsigned int type)
@@ -2740,6 +2987,17 @@ void Teapot_GetMeshAabbMinAndMax(TeapotMeshEnum meshId,float aabbMin[3],float aa
     aabbMin[0] = TIS.aabbMin[meshId][0];aabbMin[1] = TIS.aabbMin[meshId][1];aabbMin[2] = TIS.aabbMin[meshId][2];
     aabbMax[0] = TIS.aabbMax[meshId][0];aabbMax[1] = TIS.aabbMax[meshId][1];aabbMax[2] = TIS.aabbMax[meshId][2];
 }
+void Teapot_GetMeshScaledAabbHalfExtents(TeapotMeshEnum meshId,float halfAabb[3],const float scaling[3]) {
+    halfAabb[0] = TIS.halfExtents[meshId][0]*scaling[0];halfAabb[1] = TIS.halfExtents[meshId][1]*scaling[1];halfAabb[2] = TIS.halfExtents[meshId][2]*scaling[2];
+}
+void Teapot_GetMeshScaledAabbExtents(TeapotMeshEnum meshId,float aabb[3],const float scaling[3]) {
+    aabb[0] = TIS.halfExtents[meshId][0]*2*scaling[0];aabb[1] = TIS.halfExtents[meshId][1]*2*scaling[1];aabb[2] = TIS.halfExtents[meshId][2]*2*scaling[2];
+}
+
+void Teapot_MeshData_GetAabbCenter(const Teapot_MeshData* md,float* center)   {Teapot_GetMeshAabbCenter(md->meshId,center);center[0]*=md->scaling[0];center[1]*=md->scaling[1];center[2]*=md->scaling[2];}
+void Teapot_MeshData_GetAabbHalfExtents(const Teapot_MeshData* md,float* halfAabb)  {Teapot_GetMeshScaledAabbHalfExtents(md->meshId,halfAabb,md->scaling);}
+void Teapot_MeshData_GetAabbExtents(const Teapot_MeshData* md,float* aabb)  {Teapot_GetMeshScaledAabbExtents(md->meshId,aabb,md->scaling);}
+
 
 void Teapot_Set_Init_Callback(TeapotInitCallback callback)  {gTeapotInitCallback = callback;}
 
@@ -2757,7 +3015,7 @@ static void Teapot_MeshData_HiLevel_DrawMulti_ShadowMap_Vp_Internal(Teapot_MeshD
     for (i=0;i<numMeshData;i++) {
         const Teapot_MeshData* md = pMeshData[i];
         TeapotMeshEnum meshId = md->meshId;
-        if (md->color[3]>=transparent_threshold && meshId<TEAPOT_MESH_PIVOT3D)
+        if (md->active && md->color[3]>=transparent_threshold && meshId<TEAPOT_MESH_PIVOT3D)
         {
             if (use_frustum_culling) {
             // We could enable frustum culling here too...
@@ -2831,6 +3089,9 @@ static void Teapot_MeshData_HiLevel_DrawMulti_ShadowMap_Vp_Internal(Teapot_MeshD
             if (meshId==TEAPOT_MESH_SPHERE2)    meshId=TEAPOT_MESH_SPHERE1;
             else if (meshId==TEAPOT_MESH_CONE2) meshId=TEAPOT_MESH_CONE1;
             else if (meshId==TEAPOT_MESH_CUBIC_GROUND)  meshId=TEAPOT_MESH_CUBE;
+#           ifdef TEAPOT_USE_SIMPLER_CUBE_ROUNDED_SHADOW
+            else if (meshId==TEAPOT_MESH_CUBE_ROUNDED)    meshId=TEAPOT_MESH_CUBE;
+#           endif
             // End (Opt)
 
             Dynamic_Resolution_Shadow_Set_MMatrix(md->mMatrix); // mMatrix here (or mvMatrix if we had called above Dynamic_Resolution_Shadow_Set_VpMatrix(lvpMatrix * cameraViewMatrixInverse);)
@@ -2947,10 +3208,10 @@ void Teapot_Init(void) {
 
     {        
 #       ifndef TEAPOT_MAX_NUM_MESH_VERTS
-#           define TEAPOT_MAX_NUM_MESH_VERTS  (2796)
+#           define TEAPOT_MAX_NUM_MESH_VERTS  (3268)
 #       endif //TEAPOT_MAX_NUM_MESH_VERTS
 #       ifndef TEAPOT_MAX_NUM_MESH_INDS
-#           define TEAPOT_MAX_NUM_MESH_INDS   (14148)
+#           define TEAPOT_MAX_NUM_MESH_INDS   (16176)
 #       endif //TEAPOT_MAX_NUM_MESH_INDS
 
 #       ifndef TEAPOT_MAX_NUM_USER_MESH_VERTICES
@@ -3324,6 +3585,54 @@ void Teapot_Init(void) {
 #               endif
             }
                 break;
+            case TEAPOT_MESH_FLIPPER_RIGHT:
+            case TEAPOT_MESH_FLIPPER_LEFT:  {
+#               if !defined(TEAPOT_NO_MESH_FLIPPER_RIGHT) && !defined(TEAPOT_NO_MESH_FLIPPER_LEFT)
+                {
+                    // numVerts: 160;	numInds: 564 (188 triangles);
+                    // centerPoint: {-1.250437,0.010211,0.000000};	halfExtents: {1.750000,0.500000,0.500000};
+                    // origin: {0,0,0} is at the pivot point, at the center of the bigger cylinder (of radius 0.5)
+                    // The smaller cylinder at the flipper tip has radius = 0.2
+                    // Total extent in the X axis is 3.5
+                    // ... so that the distance between the two centers should be... 3.5-0.5-0.2 = 2.8
+                    const float A=0.510211,B=0.489789,C=0.000000,D=0.500000,E=0.097460,F=0.490393,G=0.191174,H=0.461940,I=0.277542,J=0.415735,K=0.353244,L=0.353553,M=0.415371,N=0.277785,O=0.461536,P=0.191342,Q=0.489964,R=0.097545,S=2.839596,T=0.196157,U=2.877082,V=0.184776,W=2.911629,X=0.166294,Y=2.941910,Z=2.966761,a=0.111114,b=2.996598,c=0.039018,d=0.499563,e=0.141421,f=2.985227;
+                    const float g=0.076536,h=3.000437,k=2.985226,l=0.076537,m=0.141422;
+                    const float verts[160*3] = {
+                        -C,-B,-D,E,-B,-F,G,-B,-H,I,-B,-J,K,-B,-L,M,-B,-N,O,-B,-P,Q,-B,-R,d,-B,-C,Q,-B,R,O,-B,P,M,-B,N,K,-B,L,I,-B,J,G,-B,H,E,-B,F,-C,-B,D,-S,-B,T,-U,-B,V,-W,-B,X,-Y,-B,e,-Z,-B,a,-f,-B,g,-b,-B,c,-h,-B,-C,-b,-B,-c,-k,-B,-l,-Z,-B,-a,-Y,-B,-m,-W,-B,-X,-U,-B,-V,-S,-B,-T,
+                        E,A,-F,-C,A,-D,G,A,-H,I,A,-J,K,A,-L,M,A,-N,O,A,-P,Q,A,-R,d,A,-C,Q,A,R,O,A,P,M,A,N,K,A,L,I,A,J,G,A,H,E,A,F,-C,A,D,-S,A,T,-U,A,V,-W,A,X,-Y,A,e,-Z,A,a,-f,A,g,-b,A,c,-h,A,-C,-b,A,-c,-k,A,-l,-Z,A,-a,-Y,A,-m,-W,A,-X,-U,A,-V,-S,A,-T,
+                        -C,-B,-D,0.000642,A,-0.345718,E,-B,-F,0.067400,A,-0.339137,G,-B,-H,0.132209,A,-0.319460,I,-B,-J,0.191938,A,-0.287506,K,-B,-L,0.244290,A,-0.244504,M,-B,-N,0.287255,A,-0.192106,O,-B,-P,0.319181,A,-0.132325,Q,-B,-R,0.338840,A,-0.067459,d,-B,-C,0.345479,A,-C,Q,-B,R,0.338840,A,0.067458,O,-B,P,0.319181,A,0.132325,M,-B,N,0.287255,A,0.192106,K,-B,L,0.244290,A,0.244504,I,-B,J,0.191938,A,0.287506,G,-B,H,0.132209,A,0.319460,E,-B,F,0.067399,A,0.339137,
+                        -C,-B,D,0.000642,A,0.345718,-S,-B,T,-2.808919,A,0.045088,-U,-B,V,-2.818116,A,0.042296,-W,-B,X,-2.826025,A,0.038065,-Y,-B,e,-2.832956,A,0.032372,-Z,-B,a,-2.838645,A,0.025434,-f,-B,g,-2.842871,A,0.017520,-b,-B,c,-2.845474,A,0.008931,-h,-B,-C,-2.846353,A,-C,-b,-B,-c,-2.845474,A,-0.008932,-k,-B,-l,-2.842871,A,-0.017520,-Z,-B,-a,-2.838644,A,-0.025435,-Y,-B,-m,-2.832956,A,-0.032372,-W,-B,-X,-2.826025,A,-0.038066,-U,-B,-V,-2.818116,A,-0.042296,-S,-B,-T,-2.808919,A,-0.045089,
+                        E,A,-F,-C,A,-D,G,A,-H,I,A,-J,K,A,-L,M,A,-N,O,A,-P,Q,A,-R,d,A,-C,Q,A,R,O,A,P,M,A,N,K,A,L,I,A,J,G,A,H,E,A,F,-C,A,D,-S,A,T,-U,A,V,-W,A,X,-Y,A,e,-Z,A,a,-f,A,g,-b,A,c,-h,A,-C,-b,A,-c,-k,A,-l,-Z,A,-a,-Y,A,-m,-W,A,-X,-U,A,-V,-S,A,-T};
+                    const size_t numVerts = sizeof(verts)/(sizeof(verts[0])*3);
+                    const unsigned short inds[564] = {	// 188 triangles
+                        65,128,129,67,130,128,69,131,130,71,132,131,73,133,132,75,134,133,77,135,134,79,136,135,83,136,81,85,137,83,87,138,85,89,139,87,91,140,89,93,141,91,95,142,93,97,143,95,97,145,144,101,145,99,101,147,146,103,148,147,105,149,148,107,
+                        150,149,109,151,150,111,152,151,115,152,113,117,153,115,119,154,117,121,155,119,123,156,121,125,157,123,125,159,158,65,159,127,65,67,128,67,69,130,69,71,131,71,73,132,73,75,133,75,77,134,77,79,135,79,81,136,83,137,136,85,138,137,87,139,
+                        138,89,140,139,91,141,140,93,142,141,95,143,142,97,144,143,97,99,145,101,146,145,101,103,147,103,105,148,105,107,149,107,109,150,109,111,151,111,113,152,115,153,152,117,154,153,119,155,154,121,156,155,123,157,156,125,158,157,125,127,159,65,129,159,
+                        33,1,0,32,2,1,34,3,2,35,4,3,36,5,4,37,6,5,38,7,6,39,8,7,40,9,8,41,10,9,42,11,10,43,12,11,44,13,12,45,14,13,46,15,14,47,16,15,48,17,16,49,18,17,50,19,18,51,20,19,52,21,20,53,
+                        22,21,54,23,22,55,24,23,56,25,24,57,26,25,58,27,26,59,28,27,60,29,28,61,30,29,62,31,30,63,0,31,33,32,1,32,34,2,34,35,3,35,36,4,36,37,5,37,38,6,38,39,7,39,40,8,40,41,9,41,42,10,42,43,
+                        11,43,44,12,44,45,13,45,46,14,46,47,15,47,48,16,48,49,17,49,50,18,50,51,19,51,52,20,52,53,21,53,54,22,54,55,23,55,56,24,56,57,25,57,58,26,58,59,27,59,60,28,60,61,29,61,62,30,62,63,31,63,33,0,
+                        126,98,110,126,64,96,64,66,70,64,80,96,66,68,70,70,72,64,72,74,64,74,76,64,76,78,64,78,80,64,80,82,96,82,84,96,84,86,96,86,88,96,88,90,96,90,92,94,94,96,90,96,98,126,98,100,102,102,104,106,106,108,98,108,
+                        110,98,110,112,126,112,114,126,114,116,126,116,118,126,118,120,126,120,122,126,122,124,126,98,102,106,125,117,101,69,67,65,65,127,99,127,125,101,125,123,121,121,119,125,119,117,125,117,115,113,113,111,109,109,107,101,107,105,101,105,103,101,101,99,
+                        127,99,97,65,97,95,93,93,91,97,91,89,97,89,87,97,87,85,97,85,83,97,83,81,97,81,79,65,79,77,65,77,75,65,75,73,65,73,71,65,71,69,65,117,113,101,113,109,101,97,81,65};
+                    const size_t numInds = sizeof(inds)/sizeof(inds[0]);
+                    // materials:
+                    // 0) Rubber {0.64f,0.05f,0.05f}: first 128 triangles == 384 inds [0,384);
+                    // 1) White: {0.65f,0.65f,0.65f}: last 60 triangles == 180 inds [384,564);
+#                   ifndef TEAPOT_MESH_FLIPPER_RIGHT
+                    if (i==TEAPOT_MESH_FLIPPER_RIGHT) AddMeshVertsAndInds(totVerts,TEAPOT_MAX_NUM_MESH_VERTS,&numTotVerts,6,totInds,TEAPOT_MAX_NUM_MESH_INDS,&numTotInds,verts,numVerts,inds,numInds,(TeapotMeshEnum)i);
+#                   endif
+#                   ifndef TEAPOT_MESH_FLIPPER_LEFT
+                    if (i==TEAPOT_MESH_FLIPPER_LEFT) {
+                        float vertsMirror[160*3];unsigned short indsMirror[564];size_t idx,idx3;
+                        for (idx=0;idx<numVerts;idx++) {idx3=3*idx;vertsMirror[idx3]=-verts[idx3];vertsMirror[idx3+1]=verts[idx3+1];vertsMirror[idx3+2]=verts[idx3+2];}
+                        for (idx=0;idx<numInds;idx+=3) {indsMirror[idx]=inds[idx];indsMirror[idx+1]=inds[idx+2];indsMirror[idx+2]=inds[idx+1];}
+                        AddMeshVertsAndInds(totVerts,TEAPOT_MAX_NUM_MESH_VERTS,&numTotVerts,6,totInds,TEAPOT_MAX_NUM_MESH_INDS,&numTotInds,vertsMirror,numVerts,indsMirror,numInds,(TeapotMeshEnum)i);
+                    }
+#                   endif
+                }
+#               endif
+            }
+                break;
             case TEAPOT_MESH_SLEDGE: {
 #               ifndef TEAPOT_NO_MESH_SLEDGE
                 {
@@ -3461,6 +3770,41 @@ void Teapot_Init(void) {
 #               endif
             }
                 break;
+            case TEAPOT_MESH_CUBE_ROUNDED: {
+#               ifndef TEAPOT_NO_MESH_CUBE_ROUNDED
+                {
+                    // numVerts: 152;	numInds: 900 (300 triangles);
+                    // centerPoint: {0.000000,0.000000,0.000000};	halfExtents: {0.500000,0.500000,0.500000};
+                    const float A=0.375000,B=0.459625,C=0.463388,D=0.417313,E=0.419194,F=0.491927,G=0.447169,H=0.411084,I=0.484746,J=0.500000;
+                    const float verts[152*3] = {
+                        G,-G,-G,H,-B,-B,A,-C,-C,-A,-C,-C,-H,-B,-B,B,-H,-B,D,-D,-I,A,-E,-F,-A,-E,-F,-D,-D,-I,C,-A,-C,C,A,-C,E,-A,-F,E,A,-F,A,A,-J,A,-A,-J,-A,-A,-J,-A,A,-J,-E,-A,-F,-E,A,-F,B,H,-B,D,D,-I,A,E,-F,-A,E,-F,-D,D,-I,-G,-G,-G,-B,-B,-H,-C,-C,-A,-C,-C,A,-B,-B,H,-B,-H,-B,-I,-D,-D,
+                        -F,-E,-A,-F,-E,A,-I,-D,D,-C,-A,-C,-C,A,-C,-F,-A,-E,-F,A,-E,-J,A,-A,-J,-A,-A,-J,-A,A,-J,A,A,-F,-A,E,-F,A,E,-B,H,-B,-I,D,-D,-F,E,-A,-F,E,A,-I,D,D,-G,-G,G,-H,-B,B,-A,-C,C,A,-C,C,H,-B,B,-B,-H,B,-D,-D,I,-A,-E,F,A,-E,F,D,-D,I,-C,-A,C,-C,A,C,-E,-A,F,-E,A,F,
+                        -A,A,J,-A,-A,J,A,-A,J,A,A,J,E,-A,F,E,A,F,-B,H,B,-D,D,I,-A,E,F,A,E,F,D,D,I,G,-G,G,B,-B,H,C,-C,A,C,-C,-A,B,-B,-H,B,-H,B,I,-D,D,F,-E,A,F,-E,-A,I,-D,-D,C,-A,C,C,A,C,F,-A,E,F,A,E,J,A,A,J,-A,A,J,-A,-A,J,A,-A,F,-A,-E,F,A,-E,B,H,B,
+                        I,D,D,F,E,A,F,E,-A,I,D,-D,D,-I,D,A,-F,E,-A,-F,E,-D,-I,D,E,-F,A,E,-F,-A,A,-J,-A,A,-J,A,-A,-J,A,-A,-J,-A,-E,-F,A,-E,-F,-A,D,-I,-D,A,-F,-E,-A,-F,-E,-D,-I,-D,G,G,-G,H,B,-B,A,C,-C,-A,C,-C,-H,B,-B,-G,G,-G,B,B,-H,D,I,-D,A,F,-E,-A,F,-E,-D,I,-D,-B,B,-H,
+                        C,C,-A,C,C,A,E,F,-A,E,F,A,A,J,A,A,J,-A,-A,J,-A,-A,J,A,-E,F,-A,-E,F,A,-C,C,-A,-C,C,A,B,B,H,D,I,D,A,F,E,-A,F,E,-D,I,D,-B,B,H,G,G,G,H,B,B,A,C,C,-A,C,C,-H,B,B,-G,G,G};
+
+                    const unsigned short inds[900] = {	// 300 triangles
+                        0,6,5,1,7,6,3,7,2,4,8,3,25,9,4,5,12,10,6,15,12,8,15,7,9,16,8,30,18,9,12,11,10,15,13,12,16,14,15,18,17,16,35,19,18,13,20,11,14,21,13,17,22,14,17,24,23,19,45,24,21,116,20,22,
+                        117,21,23,118,22,23,120,119,24,121,120,25,31,30,26,32,31,28,32,27,29,33,28,50,34,29,30,37,35,31,40,37,33,40,32,34,41,33,55,43,34,37,36,35,40,38,37,41,39,40,43,42,41,60,44,43,38,45,36,39,46,38,42,47,
+                        39,42,49,48,44,70,49,46,121,45,47,127,46,48,138,47,48,145,139,49,151,145,50,56,55,51,57,56,53,57,52,54,58,53,75,59,54,55,62,60,56,65,62,58,65,57,59,66,58,80,68,59,62,61,60,65,63,62,66,64,65,68,67,66,
+                        85,69,68,63,70,61,64,71,63,67,72,64,67,74,73,69,95,74,71,151,70,72,150,71,73,149,72,73,147,148,74,146,147,75,81,80,76,82,81,78,82,77,79,83,78,0,84,79,80,87,85,81,90,87,83,90,82,84,91,83,5,93,84,87,
+                        86,85,90,88,87,91,89,90,93,92,91,10,94,93,88,95,86,89,96,88,92,97,89,92,99,98,94,20,99,96,146,95,97,140,96,98,129,97,98,122,128,99,116,122,75,100,76,54,101,100,52,101,53,51,102,52,50,103,51,76,104,77,100,107,
+                        104,102,107,101,103,108,102,29,110,103,104,78,77,107,105,104,108,106,107,110,109,108,28,111,110,105,79,78,106,112,105,109,113,106,109,115,114,111,26,115,112,0,79,113,1,112,114,2,113,114,4,3,115,25,4,116,123,122,117,124,123,119,124,118,
+                        120,125,119,121,126,120,122,130,128,123,133,130,125,133,124,126,134,125,127,136,126,130,129,128,133,131,130,134,132,133,136,135,134,138,137,136,131,140,129,132,141,131,135,142,132,135,144,143,137,145,144,141,146,140,142,147,141,143,148,142,143,150,149,144,
+                        151,150,0,1,6,1,2,7,3,8,7,4,9,8,25,30,9,5,6,12,6,7,15,8,16,15,9,18,16,30,35,18,12,13,11,15,14,13,16,17,14,18,19,17,35,36,19,13,21,20,14,22,21,17,23,22,17,19,24,19,36,45,21,117,
+                        116,22,118,117,23,119,118,23,24,120,24,45,121,25,26,31,26,27,32,28,33,32,29,34,33,50,55,34,30,31,37,31,32,40,33,41,40,34,43,41,55,60,43,37,38,36,40,39,38,41,42,39,43,44,42,60,61,44,38,46,45,39,47,46,
+                        42,48,47,42,44,49,44,61,70,46,127,121,47,138,127,48,139,138,48,49,145,49,70,151,50,51,56,51,52,57,53,58,57,54,59,58,75,80,59,55,56,62,56,57,65,58,66,65,59,68,66,80,85,68,62,63,61,65,64,63,66,67,64,68,
+                        69,67,85,86,69,63,71,70,64,72,71,67,73,72,67,69,74,69,86,95,71,150,151,72,149,150,73,148,149,73,74,147,74,95,146,75,76,81,76,77,82,78,83,82,79,84,83,0,5,84,80,81,87,81,82,90,83,91,90,84,93,91,5,10,
+                        93,87,88,86,90,89,88,91,92,89,93,94,92,10,11,94,88,96,95,89,97,96,92,98,97,92,94,99,94,11,20,96,140,146,97,129,140,98,128,129,98,99,122,99,20,116,75,54,100,54,53,101,52,102,101,51,103,102,50,29,103,76,100,104,
+                        100,101,107,102,108,107,103,110,108,29,28,110,104,105,78,107,106,105,108,109,106,110,111,109,28,27,111,105,112,79,106,113,112,109,114,113,109,111,115,111,27,26,112,1,0,113,2,1,114,3,2,114,115,4,115,26,25,116,117,123,117,118,124,119,
+                        125,124,120,126,125,121,127,126,122,123,130,123,124,133,125,134,133,126,136,134,127,138,136,130,131,129,133,132,131,134,135,132,136,137,135,138,139,137,131,141,140,132,142,141,135,143,142,135,137,144,137,139,145,141,147,146,142,148,147,143,149,148,143,144,
+                        150,144,145,151};
+
+                    AddMeshVertsAndInds(totVerts,TEAPOT_MAX_NUM_MESH_VERTS,&numTotVerts,6,totInds,TEAPOT_MAX_NUM_MESH_INDS,&numTotInds,verts,sizeof(verts)/(sizeof(verts[0])*3),inds,sizeof(inds)/sizeof(inds[0]),(TeapotMeshEnum)i);
+                }
+#               endif
+            }
+            break;
             case TEAPOT_MESH_PLANE_X: {
 #               ifndef TEAPOT_MESH_PLANE_X
                 {
@@ -3883,6 +4227,10 @@ void Teapot_Init(void) {
 #ifdef __cplusplus
 }
 #endif
+
+#ifdef COMPILER_SUPPORTS_GCC_DIAGNOSTIC
+#   pragma GCC diagnostic pop
+#endif //COMPILER_SUPPORTS_GCC_DIAGNOSTIC
 
 #endif //TEAPOT_IMPLEMENTATION_H
 #endif //TEAPOT_IMPLEMENTATION

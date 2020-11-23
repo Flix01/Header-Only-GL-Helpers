@@ -34,6 +34,14 @@
  * used as shadow map at runtime). This is the first pass of the shadow mapping technique. In the second pass,
  * user must bind to this shadow texture, and add an additional uniform to the "second shadow map pass shader" with the
  * "dynamic resolution factor" (the change should be rather easy).
+ *
+ * UPDATE: added an EXPERIMENTAL feature: fixed resolution factor. It's used to scale the render resolution in a static way.
+ * It can be used with and without dynamic resolution. So if your screen is 1920x1080 and you don't want dynamic resolution,
+ * but simply a fixed internal resolution of (1920/2)x(1080/2), you simply set the fixed resolution factor to 0.5.
+ * If you use it together with a dynamic resolution factor, then when drf==1.f, the internal resolution stays half-size, and
+ * scales down when the dynamic resolution factor decreases.
+ * You set the fixed resolution factor as 3rd argument of Dynamic_Resolution_Init(...), or using Dynamic_Resolution_SetFixedResFactor(...)
+ *
 */
 
 /* USAGE:
@@ -59,6 +67,7 @@
 //#define DYNAMIC_RESOLUTION_SHADOW_MAP_RECTANGULAR                 // WIP. When it's NOT defined then: if (shadow_texture.width<shadow_texture.height)  shadow_texture.width=shadow_texture.height; else shadow_texture.height=shadow_texture.width;
 //#define DYNAMIC_RESOLUTION_SHADOW_USE_NEAREST_TEXTURE_FILTER      // (undefined is GL_LINEAR)
 //#define DYNAMIC_RESOLUTION_SHADOW_USE_PCF 4                       // (optional, but needs a value>0, otherwise will be set to zero). Basically it prepares the shadow texture map to be used for PCF (teapot.h is used can track and use this value).
+//#define DYNAMIC_RESOLUTION_WRITE_DEPTH_VALUE                      // (optional) Writes depth value to full-screen rendered image, so that extra 3D objects can be added at full-screen resolution, after Dynamic_Resolution_Render(...), that must be called with depth test and depth write enabled now.
 //                                                                  // Warning: when DYNAMIC_RESOLUTION_SHADOW_USE_PCF is used with emscripten, it needs: -s USE_WEBGL2=1
 //
 //#define DYNAMIC_RESOLUTION_USE_SIMD                               // (experimental) speeds up Dynamic_Resolution_Helper_MultMatrix(...) using SIMD (about 1.5x-2x when compiled with -O3 -DNDEBUG -march=native), Requires -msse (OR -mavx when using double precision).
@@ -74,7 +83,7 @@ extern "C"	{
 #endif
 
 #ifndef DYNAMIC_RESOLUTION_VERSION
-#   define DYNAMIC_RESOLUTION_VERSION 1.1
+#   define DYNAMIC_RESOLUTION_VERSION 1.3
 #endif //DYNAMIC_RESOLUTION_VERSION
 
 /* The __restrict and __restrict__ keywords are recognized in both C, at all language levels, and C++, at LANGLVL(EXTENDED).*/
@@ -128,7 +137,7 @@ typedef double droat;
 
 
 // In InitGL() or similar
-void Dynamic_Resolution_Init(float desiredFPS, int enabled);
+void Dynamic_Resolution_Init(float desiredFPS, int dr_enabled, float fr_factor);
 // In InitGL() and/or ResizeGL() or similar
 void Dynamic_Resolution_Resize(int width,int height);
 
@@ -168,11 +177,20 @@ void Dynamic_Resolution_SetMinimumFPS(float minimumFPS);
 
 float Dynamic_Resolution_GetFPS(void);
 float Dynamic_Resolution_GetDynResFactor(void);
+float Dynamic_Resolution_GetFixedResFactor(void);       // 0.f<fr_factor<=1.f     1.f -> disabled
+void Dynamic_Resolution_SetFixedResFactor(float fr_factor);  // 0.f<fr_factor<=1.f     1.f -> disabled      User might need to call ResizeGL(...), or similar function, after it.
+float Dynamic_Resolution_GetInternalResolutionWidth(void);
+float Dynamic_Resolution_GetInternalResolutionHeight(void);
 float Dynamic_Resolution_GetShadowMapDynResFactor(void);
 float Dynamic_Resolution_GetShadowMapTextureWidth(void);
 float Dynamic_Resolution_GetShadowMapTextureHeight(void);
 float Dynamic_Resolution_GetShadowMapTexelIncrement(void);
 const char* Dynamic_Resolution_GetInfoString(void);
+
+
+void Dynamic_Resolution_LowLevel_FullScreenQuadVBO_Draw(int bindVBO,int drawQuad,int unbindVBO);
+
+void Dynamic_Resolution_LowLevel_SyncRenderTarget(void);    // called by Dynamic_Resolution_Bind()
 
 static __inline void Dynamic_Resolution_Helper_IdentityMatrix(droat* __restrict result16) {
     droat* m = result16;
@@ -273,6 +291,11 @@ static __inline void Dynamic_Resolution_Helper_ConvertMatrixf2d16(double* __rest
 #   define DYNAMIC_RESOLUTION_SHADOW_USE_PCF 0
 #endif //DYNAMIC_RESOLUTION_SHADOW_USE_PCF
 
+#ifdef DYNAMIC_RESOLUTION_WRITE_DEPTH_VALUE
+# undef DYNAMIC_RESOLUTION_NO_DEPTH_ATTACHMENT
+# define DYNAMIC_RESOLUTION_NO_DEPTH_ATTACHMENT
+#endif
+
 #ifdef __cplusplus
 extern "C"	{
 #endif
@@ -303,18 +326,52 @@ static const char* ScreenQuadVS[] = {
     "    gl_Position = vec4( a_position, 1 );\n"
     "}\n"
 };
+/*
+WARNING: 0:5: '
+
+ERROR: 0:19: '=' : dimension mismatch
+ERROR: 0:19: '=' : cannot convert from 'lowp 4-component vector of float' to 'mediump float'
+
+ERROR: 0:19: '=' : dimension mismatch
+ERROR: 0:19: '=' : cannot convert from 'lowp 4-component vector of float' to 'lowp float'
+*/
 static const char* ScreenQuadFS[] = {
     "#ifdef GL_ES\n"
-    "precision mediump float;\n"
+#   ifdef DYNAMIC_RESOLUTION_WRITE_DEPTH_VALUE
+    "#extension GL_EXT_frag_depth : enable\n"	// require  // NOTE: From WebGL2 this extension is always missing, but gl_FragDepth is present in shaders with  #version 300 es
+    "precision mediump float;\n"            // lowp would speed it up
+    "uniform lowp sampler2D s_depth;\n"
+#   else
+    "precision mediump float;\n"           // lowp would speed it up
+#   endif
     "uniform lowp sampler2D s_diffuse;\n"
     "#else\n"
+#   ifdef DYNAMIC_RESOLUTION_WRITE_DEPTH_VALUE
+    "uniform sampler2D s_depth;\n"
+#   endif
     "uniform sampler2D s_diffuse;\n"
     "#endif\n"
+#   ifdef DYNAMIC_RESOLUTION_WRITE_DEPTH_VALUE
+    "#define WRITE_DEPTH_VALUE\n"
+#   ifdef __EMSCRIPTEN__
+    "#  ifndef GL_EXT_frag_depth\n"
+    "#      undef WRITE_DEPTH_VALUE\n"
+    "#  endif\n"
+#   endif
+#   endif
     "uniform vec3 screenResAndFactor; // .x and .y in pixels; .z in [0,1]: default: 1\n"
     "\n"
     "void main() {\n"
-    "	 vec2 texCoords = (gl_FragCoord.xy/screenResAndFactor.xy)*screenResAndFactor.z;\n"
-    "    gl_FragColor = texture2D( s_diffuse, texCoords);\n"
+    "   vec2 texCoords = (gl_FragCoord.xy/screenResAndFactor.xy)*screenResAndFactor.z;\n"
+    "#  ifdef WRITE_DEPTH_VALUE\n"
+    "   float depthIn0_1 = texture2D( s_depth, texCoords).r;\n"
+    "#	ifndef GL_ES\n"
+    "   gl_FragDepth = depthIn0_1;\n"
+    "#	else //GL_ES\n"
+    "   gl_FragDepthEXT = depthIn0_1;\n"
+    "#  endif //GL_ES\n"
+    "#  endif // WRITE_DEPTH_VALUE\n"
+    "   gl_FragColor = texture2D( s_diffuse, texCoords);\n"
     "}\n"
 };
 
@@ -362,7 +419,8 @@ static __inline GLuint DRR_LoadShaderProgramFromSource(const char* vs,const char
 
 typedef struct {
     GLuint frame_buffer[DYNAMIC_RESOLUTION_NUM_RENDER_TARGETS];
-    GLuint depth_buffer[DYNAMIC_RESOLUTION_NUM_RENDER_TARGETS];
+    GLuint depth_buffer[DYNAMIC_RESOLUTION_NUM_RENDER_TARGETS];   // used as render buffers when DYNAMIC_RESOLUTION_NO_DEPTH_ATTACHMENT is not defined
+    GLuint texture_depth[DYNAMIC_RESOLUTION_NUM_RENDER_TARGETS];  // used only when DYNAMIC_RESOLUTION_WRITE_DEPTH_VALUE is defined
     GLuint texture[DYNAMIC_RESOLUTION_NUM_RENDER_TARGETS];
     float resolution_factor[DYNAMIC_RESOLUTION_NUM_RENDER_TARGETS];
 
@@ -370,13 +428,15 @@ typedef struct {
     GLint aLoc_APosition;
     GLint uLoc_screenResAndFactor;
     GLint uLoc_SDiffuse;
+    GLint uLoc_SDepth;
     int width,height;
+    int width_full,height_full; // same as width,height when fr_enabled==0
     GLint default_frame_buffer;
 
-    float FPS,desiredFPS,factor;
-    int enabled;
+    float FPS,desiredFPS,dr_factor,fr_factor;
+    int dr_enabled,fr_enabled;
 	int render_target_index;
-    char tmp[84];
+    char tmp[164];
 
     // shadow map FBO
 #   ifndef DYNAMIC_RESOLUTION_SHADOW_MAP_DISABLED
@@ -440,11 +500,14 @@ static __inline unsigned Dynamic_Resolution_Helper_NearestPowerOfTwo( unsigned x
 }
 #endif //DYNAMIC_RESOLUTION_SHADOW_MAP_SIZE_FORCE_POT
 
-static void RenderTarget_Create(RenderTarget* rt,float desiredFPS,int enabled) {
+static void RenderTarget_Create(RenderTarget* rt,float desiredFPS,int dr_enabled,float fr_factor/*=1.f*/) {
     rt->FPS = rt->desiredFPS = desiredFPS;
-    rt->enabled = enabled;
+    rt->dr_enabled = dr_enabled;
+    if (fr_factor>0) rt->fr_factor = fr_factor>=1.f ? 1.f : fr_factor;
+    else rt->fr_factor = 0.1f;
+    rt->fr_enabled = rt->fr_factor!=1.f ? 1 : 0;
 	rt->render_target_index = 0;
-    rt->factor = 1.f;
+    rt->dr_factor = 1.f;
     rt->tmp[0]='\0';
     rt->screenQuadProgramId=0;
 
@@ -456,6 +519,7 @@ static void RenderTarget_Create(RenderTarget* rt,float desiredFPS,int enabled) {
     else {
         rt->aLoc_APosition = glGetAttribLocation(rt->screenQuadProgramId, "a_position");
         rt->uLoc_SDiffuse = glGetUniformLocation(rt->screenQuadProgramId,"s_diffuse");
+        rt->uLoc_SDepth = glGetUniformLocation(rt->screenQuadProgramId,"s_depth");
         rt->uLoc_screenResAndFactor = glGetUniformLocation(rt->screenQuadProgramId,"screenResAndFactor");
         if (rt->aLoc_APosition<0) fprintf(stderr,"Error: rt->aLoc_APosition<0\n");
         if (rt->uLoc_SDiffuse<0) fprintf(stderr,"Error: uLoc_SDiffuse<0\n");
@@ -466,6 +530,8 @@ static void RenderTarget_Create(RenderTarget* rt,float desiredFPS,int enabled) {
     glGenTextures(DYNAMIC_RESOLUTION_NUM_RENDER_TARGETS, rt->texture);
     glGenRenderbuffers(DYNAMIC_RESOLUTION_NUM_RENDER_TARGETS, rt->depth_buffer);
     glGetIntegerv(GL_FRAMEBUFFER_BINDING, &(rt->default_frame_buffer));
+
+    glGenTextures(DYNAMIC_RESOLUTION_NUM_RENDER_TARGETS, rt->texture_depth);
 
 #   ifndef DYNAMIC_RESOLUTION_SHADOW_MAP_DISABLED
     rt->shadowProgramId = 0;
@@ -496,12 +562,15 @@ static void RenderTarget_Destroy(RenderTarget* rt) {
     if (rt->texture[0]) 		glDeleteTextures(DYNAMIC_RESOLUTION_NUM_RENDER_TARGETS, rt->texture);
     if (rt->depth_buffer[0])	glDeleteBuffers(DYNAMIC_RESOLUTION_NUM_RENDER_TARGETS, rt->depth_buffer);
     if (rt->screenQuadProgramId) {glDeleteProgram(rt->screenQuadProgramId);rt->screenQuadProgramId=0;}
+    if (rt->texture_depth[0]) 		glDeleteTextures(DYNAMIC_RESOLUTION_NUM_RENDER_TARGETS, rt->texture_depth);
 
 #   ifndef DYNAMIC_RESOLUTION_SHADOW_MAP_DISABLED
     if (rt->shadow_frame_buffer[0])    glDeleteBuffers(DYNAMIC_RESOLUTION_NUM_RENDER_TARGETS, rt->shadow_frame_buffer);
     if (rt->shadow_texture[0])         glDeleteTextures(DYNAMIC_RESOLUTION_NUM_RENDER_TARGETS,rt->shadow_texture);
     if (rt->shadowProgramId) {glDeleteProgram(rt->shadowProgramId);rt->shadowProgramId=0;}
 #   endif
+
+    memset(rt,0,sizeof(*rt));
 }
 static const char* RenderTarget_Helper_GetFramebufferStatusString(GLenum status) {
     switch(status) {
@@ -524,8 +593,9 @@ static void RenderTarget_Init(RenderTarget* rt,int width, int height) {
     int i;GLenum filter;
     //glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     if (rt->screenQuadProgramId) {
-		rt->width = width;
-        rt->height = height;
+        rt->width_full = width;rt->height_full = height;
+        if (rt->fr_enabled) {rt->width = (int)((float)width*rt->fr_factor);rt->height = (int)((float)height*rt->fr_factor);}
+        else {rt->width = width;rt->height = height;}
 
         filter = GL_LINEAR;
 #       ifdef  DYNAMIC_RESOLUTION_USE_NEAREST_TEXTURE_FILTER
@@ -541,13 +611,16 @@ static void RenderTarget_Init(RenderTarget* rt,int width, int height) {
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-#           ifdef __EMSCRIPTEN__	// WebGL 1.0 (in Firefox) seems to accept only this setting (we could use it for non-emscripten builds too)
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, rt->width, rt->height, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
-#           else
             // I've read that 4 channels (e.g. GL_RGBA) are faster then 3 (e.g. GL_RGB)
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, rt->width, rt->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);	// GL_BGRA, GL_UNSIGNED_BYTE
-            //glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, rt->width, rt->height, 0, GL_RGBA, GL_UNSIGNED_INT_8_8_8_8_REV, 0);	// This seems what my NVIDIA card seems to support natively
+#           ifdef DYNAMIC_RESOLUTION_FORCE_USE_GL_RGB_TEXTURE_FOR_COLOR_ATTACHMENT
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, rt->width, rt->height, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);  // WebGL 2.0 (in Firefox) seems to accept only this setting (we could use it for non-emscripten builds too)
+#           else
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, rt->width, rt->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
 #           endif
+            // This are some notes I've taken (but I think that GL_RGBA == GL_RGBA8, and that the next-to-the-last argument is only used when the last is not NULL
+            // (even if if MUST be compatible with the third argument, even when last argument is NULL)
+            //glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, rt->width, rt->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);	// GL_BGRA, GL_UNSIGNED_BYTE
+            //glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, rt->width, rt->height, 0, GL_RGBA, GL_UNSIGNED_INT_8_8_8_8_REV, 0);	// This seems what my NVIDIA card seems to support natively
 
 #           ifndef DYNAMIC_RESOLUTION_NO_DEPTH_ATTACHMENT
             glBindRenderbuffer(GL_RENDERBUFFER, rt->depth_buffer[i]);
@@ -558,15 +631,34 @@ static void RenderTarget_Init(RenderTarget* rt,int width, int height) {
 #           endif //__EMSCRIPTEN__
 #           endif
 
+#           ifdef DYNAMIC_RESOLUTION_WRITE_DEPTH_VALUE
+            // create depth texture
+            glBindTexture(GL_TEXTURE_2D, rt->texture_depth[i]);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        #   ifndef __EMSCRIPTEN__
+            glTexImage2D( GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, rt->width, rt->height, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, 0); // if last param 'pixels' is NULL (0), then 'type' is ignored
+        #   else //__EMSCRIPTEN__
+            glTexImage2D( GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, rt->width, rt->height, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_SHORT, 0);
+        #   endif //__EMSCRIPTEN__
+            glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE );
+            glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE );
+            glBindTexture(GL_TEXTURE_2D, 0);
+#           endif
+
             glBindFramebuffer(GL_FRAMEBUFFER, rt->frame_buffer[i]);
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, rt->texture[i], 0);
 #           ifndef DYNAMIC_RESOLUTION_NO_DEPTH_ATTACHMENT
             glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rt->depth_buffer[i]);
 #           endif
+
+#           ifdef DYNAMIC_RESOLUTION_WRITE_DEPTH_VALUE
+            glFramebufferTexture2D(GL_FRAMEBUFFER,GL_DEPTH_ATTACHMENT,GL_TEXTURE_2D,rt->texture_depth[i], 0);
+#           endif
             {
                 //Does the GPU support current FBO configuration?
                 GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-                if (status!=GL_FRAMEBUFFER_COMPLETE) printf("glCheckFramebufferStatus(...) FAILED: %s\n",RenderTarget_Helper_GetFramebufferStatusString(status));
+                if (status!=GL_FRAMEBUFFER_COMPLETE) printf("dynamic_resolution.h: glCheckFramebufferStatus(...) FAILED: %s\n",RenderTarget_Helper_GetFramebufferStatusString(status));
             }
         }
         glBindTexture(GL_TEXTURE_2D, 0);
@@ -581,8 +673,10 @@ static void RenderTarget_Init(RenderTarget* rt,int width, int height) {
 #       ifndef DYNAMIC_RESOLUTION_SHADOW_MAP_SIZE_MULTIPLIER
 #           define DYNAMIC_RESOLUTION_SHADOW_MAP_SIZE_MULTIPLIER (1.5)
 #       endif //DYNAMIC_RESOLUTION_SHADOW_MAP_SIZE_MULTIPLIER
-        rt->shadow_texture_width = width*DYNAMIC_RESOLUTION_SHADOW_MAP_SIZE_MULTIPLIER;
-        rt->shadow_texture_height = height*DYNAMIC_RESOLUTION_SHADOW_MAP_SIZE_MULTIPLIER;
+        const int shadow_texture_width_full = width*DYNAMIC_RESOLUTION_SHADOW_MAP_SIZE_MULTIPLIER;
+        const int shadow_texture_height_full = height*DYNAMIC_RESOLUTION_SHADOW_MAP_SIZE_MULTIPLIER;
+        if (rt->fr_enabled) {rt->shadow_texture_width = (int)((float)shadow_texture_width_full*rt->fr_factor);rt->shadow_texture_height = (int)((float)shadow_texture_height_full*rt->fr_factor);}
+        else {rt->shadow_texture_width = shadow_texture_width_full;rt->shadow_texture_height = shadow_texture_height_full;}
 #       ifndef DYNAMIC_RESOLUTION_SHADOW_MAP_MAX_WIDTH
 #           define DYNAMIC_RESOLUTION_SHADOW_MAP_MAX_WIDTH (2048)
 #       endif //DYNAMIC_RESOLUTION_SHADOW_MAP_MAX_WIDTH
@@ -597,7 +691,7 @@ static void RenderTarget_Init(RenderTarget* rt,int width, int height) {
         if (rt->shadow_texture_height>DYNAMIC_RESOLUTION_SHADOW_MAP_MAX_HEIGHT) rt->shadow_texture_height = DYNAMIC_RESOLUTION_SHADOW_MAP_MAX_HEIGHT;
 #       ifndef DYNAMIC_RESOLUTION_SHADOW_MAP_RECTANGULAR
         if (rt->shadow_texture_width<rt->shadow_texture_height) rt->shadow_texture_width=rt->shadow_texture_height;
-        rt->shadow_texture_height=rt->shadow_texture_width;
+        else rt->shadow_texture_height=rt->shadow_texture_width;
 #       endif
 
         // Debug:
@@ -668,13 +762,13 @@ static void RenderTarget_Init(RenderTarget* rt,int width, int height) {
 static void RenderTarget_Resize(RenderTarget* rt,int width, int height)    {
    RenderTarget_Init(rt,width,height);
 }
-static RenderTarget render_target;
+static RenderTarget render_target = {0,};
 
-int Dynamic_Resolution_GetEnabled(void) {return render_target.enabled;}
+int Dynamic_Resolution_GetEnabled(void) {return render_target.dr_enabled;}
 void Dynamic_Resolution_SetEnabled(int flag) {
     int i;
-    render_target.enabled=flag;
-    render_target.factor=1.f;
+    render_target.dr_enabled=flag;
+    render_target.dr_factor=1.f;
     for (i=0;i<DYNAMIC_RESOLUTION_NUM_RENDER_TARGETS;i++) {
         render_target.resolution_factor[i]=1.f;
 #       ifndef DYNAMIC_RESOLUTION_SHADOW_MAP_DISABLED
@@ -689,6 +783,19 @@ void Dynamic_Resolution_SetMinimumFPS(float minimumFPS) {render_target.desiredFP
 
 float Dynamic_Resolution_GetFPS(void)   {return render_target.FPS;}
 float Dynamic_Resolution_GetDynResFactor(void)  {return render_target.resolution_factor[render_target.render_target_index];}
+float Dynamic_Resolution_GetFixedResFactor(void)  {return render_target.fr_factor;}
+void Dynamic_Resolution_SetFixedResFactor(float fr_factor)   {
+    if (fr_factor>0) fr_factor = fr_factor>=1.f ? 1.f : fr_factor;
+    else fr_factor = 0.1f;
+    if (fr_factor==render_target.fr_factor) return;
+    render_target.fr_factor = fr_factor;
+    render_target.fr_enabled = fr_factor!=1.f ? 1 : 0;
+
+    // The following line might be not enough: user might want to call ResizeGL(...), or similar function, after Dynamic_Resolution_SetFixedResFactor(...)
+    RenderTarget_Resize(&render_target,render_target.width_full,render_target.height_full);
+}
+float Dynamic_Resolution_GetInternalResolutionWidth(void)   {return render_target.width;}
+float Dynamic_Resolution_GetInternalResolutionHeight(void)  {return render_target.height;}
 float Dynamic_Resolution_GetShadowMapDynResFactor(void)  {
 #   ifndef DYNAMIC_RESOLUTION_SHADOW_MAP_DISABLED
     //return render_target.shadow_resolution_factor[render_target.render_target_index];
@@ -751,6 +858,12 @@ void ScreenQuadVBO_Draw() {glDrawArrays(GL_TRIANGLES,0,3);}
 static void ScreenQuadVBO_Unbind() {
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glDisableVertexAttribArray(0);
+}
+
+void Dynamic_Resolution_LowLevel_FullScreenQuadVBO_Draw(int bindVBO,int drawQuad,int unbindVBO) {
+    if (bindVBO)   ScreenQuadVBO_Bind();
+    if (drawQuad)  ScreenQuadVBO_Draw();
+    if (unbindVBO)  ScreenQuadVBO_Unbind();
 }
 
 
@@ -864,8 +977,8 @@ static __inline GLuint DRR_LoadShaderProgramFromSource(const char* vs,const char
     return programId;
 }
 
-void Dynamic_Resolution_Init(float desiredFPS,int enabled) {
-    RenderTarget_Create(&render_target,desiredFPS,enabled);
+void Dynamic_Resolution_Init(float desiredFPS,int dr_enabled,float fr_factor/*=1.f*/) {
+    RenderTarget_Create(&render_target,desiredFPS,dr_enabled,fr_factor);
 	ScreenQuadVBO_Init();
 }
 
@@ -879,30 +992,33 @@ void Dynamic_Resolution_Resize(int width,int height) {
 }
 
 void Dynamic_Resolution_Bind() {
-    if (render_target.enabled)	{
-        render_target.resolution_factor[render_target.render_target_index] = render_target.factor;
+    if (render_target.dr_enabled || render_target.fr_enabled)	{
+        render_target.resolution_factor[render_target.render_target_index] = render_target.dr_factor;
         glBindFramebuffer(GL_FRAMEBUFFER, render_target.frame_buffer[render_target.render_target_index]); //NUM_RENDER_TARGETS
-        glViewport(0, 0, (int)(render_target.width * render_target.factor),(int) (render_target.height * render_target.factor));
+        glViewport(0, 0, (int)(render_target.width * render_target.dr_factor),(int) (render_target.height * render_target.dr_factor));
     }
-    else glViewport(0, 0, render_target.width, render_target.height);
+    else glViewport(0, 0, render_target.width_full, render_target.height_full);
 }
 
 void Dynamic_Resolution_Unbind() {
-    if (render_target.enabled)	{
+    if (render_target.dr_enabled || render_target.fr_enabled)	{
         glBindFramebuffer(GL_FRAMEBUFFER,render_target.default_frame_buffer);
-        glViewport(0, 0, render_target.width, render_target.height);
+        glViewport(0, 0, render_target.width_full, render_target.height_full);
     }
+}
+
+void Dynamic_Resolution_LowLevel_SyncRenderTarget() {
+    if (render_target.dr_enabled || render_target.fr_enabled)	render_target.resolution_factor[render_target.render_target_index] = render_target.dr_factor;
 }
 
 void Dynamic_Resolution_Bind_Shadow() {
 #   ifndef DYNAMIC_RESOLUTION_SHADOW_MAP_DISABLED
     glBindFramebuffer(GL_FRAMEBUFFER, render_target.shadow_frame_buffer[render_target.render_target_index]);
-    if (render_target.enabled)  {
-        render_target.shadow_resolution_factor[render_target.render_target_index] = render_target.factor;
-        glViewport(0, 0, (int)(render_target.shadow_texture_width * render_target.factor),(int) (render_target.shadow_texture_height * render_target.factor));
+    if (render_target.dr_enabled || render_target.fr_enabled)  {
+        render_target.shadow_resolution_factor[render_target.render_target_index] = render_target.dr_factor;
+        glViewport(0, 0, (int)(render_target.shadow_texture_width * render_target.dr_factor),(int) (render_target.shadow_texture_height * render_target.dr_factor));
     }
-    else
-        glViewport(0, 0, (int)(render_target.shadow_texture_width),(int) (render_target.shadow_texture_height));
+    else glViewport(0, 0, (int)(render_target.shadow_texture_width),(int) (render_target.shadow_texture_height));
     glEnableVertexAttribArray(render_target.shadow_aLoc_APosition);
     glUseProgram(render_target.shadowProgramId);
     glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
@@ -970,7 +1086,8 @@ void Dynamic_Resolution_Unbind_Shadow() {
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     glUseProgram(0);
     glDisableVertexAttribArray(render_target.shadow_aLoc_APosition);
-    glViewport(0, 0, render_target.shadow_texture_width, render_target.shadow_texture_height);
+    //glViewport(0, 0, render_target.shadow_texture_width, render_target.shadow_texture_height);  // Is this correct?
+    glViewport(0, 0, render_target.width_full, render_target.height_full);  // Isn't this this better?
     glBindFramebuffer(GL_FRAMEBUFFER,render_target.default_frame_buffer);
 #   endif
 }
@@ -1005,29 +1122,32 @@ static void Dynamic_Resolution_Calculate_Factor(float elapsed_seconds_from_last_
     static unsigned frames = 0;
     static float total_seconds = 0;
     ++frames;
-    total_seconds+=elapsed_seconds_from_last_frame;;
-    if (total_seconds>2.f) {
+    total_seconds+=elapsed_seconds_from_last_frame;
+#   ifndef DYNAMIC_RESOLUTION_ACTION_INTERVAL
+#       define DYNAMIC_RESOLUTION_ACTION_INTERVAL (2.f)     // seconds [default value: 2.f]
+#   endif
+    if (total_seconds>DYNAMIC_RESOLUTION_ACTION_INTERVAL) {
         const float FPS_TARGET = (float) render_target.desiredFPS;
         render_target.FPS = (float)(frames/total_seconds);
-        total_seconds-= 2.f;
+        total_seconds-= DYNAMIC_RESOLUTION_ACTION_INTERVAL;
         frames = 0;
-        if (render_target.enabled)
+
+        if (render_target.dr_enabled)
         {
             if (render_target.FPS<FPS_TARGET) {
-                render_target.factor-= render_target.factor*(FPS_TARGET-render_target.FPS)*0.0175f;
-                if (render_target.factor<0.15f) render_target.factor=0.15f;
+                render_target.dr_factor-= render_target.dr_factor*(FPS_TARGET-render_target.FPS)*0.0175f;
+                if (render_target.dr_factor<0.15f) render_target.dr_factor=0.15f;
             }
             else {
-                render_target.factor+= render_target.factor*(render_target.FPS-FPS_TARGET)*0.0175f;
-                if (render_target.factor>1.0f) render_target.factor=1.0f;
+                render_target.dr_factor+= render_target.dr_factor*(render_target.FPS-FPS_TARGET)*0.0175f;
+                if (render_target.dr_factor>1.0f) render_target.dr_factor=1.0f;
             }
         }
-        else render_target.factor=1.f;
-
+        else render_target.dr_factor=1.f;
 #       ifdef DYNAMIC_RESOLUTION_SHADOW_MAP_DISABLED
-        sprintf(render_target.tmp,"FPS: %1.0f DYN-RES:%s DRF=%1.3f (%dx%d) (shadow mapping disabled)",render_target.FPS,render_target.enabled ? "ON " : "OFF",render_target.factor,render_target.width,render_target.height);
+        sprintf(render_target.tmp,"FPS: %1.0f DYN-RES[%1.0fFT]:%s DRF=%1.3f FIXED-RES:%s FRF=%1.3f (%dx%d)",render_target.FPS,render_target.desiredFPS,render_target.dr_enabled ? "ON " : "OFF",render_target.dr_factor,render_target.fr_enabled ? "ON" : "OFF",render_target.fr_factor,render_target.width,render_target.height);
 #       else
-        sprintf(render_target.tmp,"FPS: %1.0f DYN-RES:%s DRF=%1.3f (%dx%d) (shadow_map:%dx%d)",render_target.FPS,render_target.enabled ? "ON " : "OFF",render_target.factor,render_target.width,render_target.height,render_target.shadow_texture_width,render_target.shadow_texture_height);
+        sprintf(render_target.tmp,"FPS: %1.0f DYN-RES[%1.0fFT]:%s DRF=%1.3f FIXED-RES:%s FRF=%1.3f (%dx%d) (shadow_map:%dx%d)",render_target.FPS,render_target.desiredFPS,render_target.dr_enabled ? "ON " : "OFF",render_target.dr_factor,render_target.fr_enabled ? "ON" : "OFF",render_target.fr_factor,render_target.width,render_target.height,render_target.shadow_texture_width,render_target.shadow_texture_height);
 #       endif
     }
 }
@@ -1036,15 +1156,23 @@ void Dynamic_Resolution_Render(float elapsed_seconds_from_last_frame)   {
     int render_target_index2 = render_target.render_target_index + 1;
     if (render_target_index2>=DYNAMIC_RESOLUTION_NUM_RENDER_TARGETS) render_target_index2-=DYNAMIC_RESOLUTION_NUM_RENDER_TARGETS;
     //printf("%d - %d\n",render_target_index,render_target_index2);
-    if (render_target.enabled)	{
-        glViewport(0, 0, render_target.width, render_target.height);
+    if (render_target.dr_enabled || render_target.fr_enabled)
+    {
+        glViewport(0, 0, render_target.width_full, render_target.height_full);
+        glColorMask(1,1,1,0);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, render_target.texture[render_target_index2]);
+#       ifdef DYNAMIC_RESOLUTION_WRITE_DEPTH_VALUE
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, render_target.texture_depth[render_target_index2]);
+#       endif
 
         ScreenQuadVBO_Bind();
         glUseProgram(render_target.screenQuadProgramId);
         glUniform1i(render_target.uLoc_SDiffuse,0);
-        glUniform3f(render_target.uLoc_screenResAndFactor,render_target.width,render_target.height,render_target.resolution_factor[render_target_index2]);
+        glUniform1i(render_target.uLoc_SDepth,1);
+
+        glUniform3f(render_target.uLoc_screenResAndFactor,render_target.width_full,render_target.height_full,render_target.resolution_factor[render_target_index2]);
 
         //glDisable(GL_DEPTH_TEST);glDisable(GL_CULL_FACE);glDepthMask(GL_FALSE);
 
@@ -1055,6 +1183,11 @@ void Dynamic_Resolution_Render(float elapsed_seconds_from_last_frame)   {
         ScreenQuadVBO_Unbind();
         glUseProgram(0);
         glBindTexture(GL_TEXTURE_2D, 0);
+#       ifdef DYNAMIC_RESOLUTION_WRITE_DEPTH_VALUE
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, 0);
+#       endif
+        glColorMask(1,1,1,1);
     }
     if (++render_target.render_target_index>=DYNAMIC_RESOLUTION_NUM_RENDER_TARGETS) render_target.render_target_index=0;
     Dynamic_Resolution_Calculate_Factor(elapsed_seconds_from_last_frame);

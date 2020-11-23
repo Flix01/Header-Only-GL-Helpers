@@ -88,6 +88,7 @@ for glut.h, glew.h, etc. with something like:
 
 // "dynamic_resolution.h" implements the first shadow mapping step and optionally dynamic resolution (that by default should keep frame rate > config.dynamic_resolution_target_fps)
 //#define DYNAMIC_RESOLUTION_USE_GLSL_VERSION_330       // (Optional) Not sure it's faster...
+//#define DYNAMIC_RESOLUTION_USE_NEAREST_TEXTURE_FILTER   // (optional) Default is GL_LINEAR, and should be better than GL_NEAREST
 //#define DYNAMIC_RESOLUTION_SHADOW_MAP_SIZE_FORCE_POT    // There are other definitions that affect the shadow map resolution. Please see dynamic_resolution.h.
 //#define DYNAMIC_RESOLUTION_SHADOW_MAP_RECTANGULAR       // more flickering but slightly better resolution
 //#define DYNAMIC_RESOLUTION_SHADOW_MAP_SIZE_MULTIPLIER   2.0 // 1.5 default value [better resolution, but more expensive]
@@ -289,7 +290,7 @@ static float Colors[NUM_COLORS][3]={
 void InitGL(void) {
 
     // IMPORTANT CALL--------------------------------------------------------
-    Dynamic_Resolution_Init(config.dynamic_resolution_target_fps,config.dynamic_resolution_enabled);
+    Dynamic_Resolution_Init(config.dynamic_resolution_target_fps,config.dynamic_resolution_enabled,1.f);    // last arg is the fixed_resolution_factor, in (0.1f,1.f]. Default is 1.f. It means: (max) internal_resolution = full_window_resolution*fixed_resolution_factor. Works even when dynamic resolution is disabled.
     //-----------------------------------------------------------------------
 #   ifdef TEST_ADD_USER_MESH
     Teapot_Set_Init_UserMeshCallback(&Teapot_Init_User_Mesh_Callback);  // if used must be called BEFORE Teapot_Init()

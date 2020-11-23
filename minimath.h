@@ -122,7 +122,7 @@ TODO:
 #define MINIMATH_H_
 
 #define NM_VERSION               "1.0 WIP"
-#define NM_VERSION_NUM           0006
+#define NM_VERSION_NUM           0007
 
 #ifdef NM_HAS_CFG
 #   include "minimath_cfg.h"
@@ -522,6 +522,7 @@ NM_API_DEF_EXT_INL int nm_Mat4UnProject4(nmoat winX, nmoat winY, nmoat winZ, nmo
 NM_API_DEF_EXT_INL void nm_Mat4UnProjectMouseCoords(nmoat* NM_RESTRICT rayOriginOut3,nmoat* NM_RESTRICT rayDirOut3,int mouseX,int mouseY,const nmoat* NM_RESTRICT vpMatrixInv,const int* viewport4);
 NM_API_DEF_EXT_INL int nm_Mat4GetMeshUnderMouseFromRay(int numMeshes,void (*getMeshDataCallback)(int idx,nmoat* mMatrix16InOut,nmoat aabbMinOut[3],nmoat aabbMaxOut[3],void* userData),const nmoat* rayOrigin3,const nmoat* rayDir3,nmoat* pOptionalDistanceOut,void* userData);
 NM_API_DEF_EXT_INL void nm_Mat4ExtractScalingFromTransformMatrix(const nmoat* NM_RESTRICT m16,nmoat* NM_RESTRICT scaOut3,nmoat* NM_RESTRICT optionalMOut16);
+NM_API_DEF_EXT_INL nmoat* nm_Mat4PickMatrix(nmoat* NM_RESTRICT mOut16,nmoat x,nmoat y,nmoat width,nmoat height,const int* viewport4);    // similar to old: glLoadIdentity();gluPickMatrix(x,y,width,height,viewport); [plus glGet(...matrixmode...) to return the matrix]. As usual, return value is the same as mOut16 (for chaining usage).
 
 
 NM_API_DEF_EXT_INL nmoat* nm_Mat4Translate(nmoat* NM_RESTRICT mInOut16,nmoat x,nmoat y,nmoat z);
@@ -3253,6 +3254,18 @@ NM_API_IMPL void nm_Mat4ExtractScalingFromTransformMatrix(const nmoat* NM_RESTRI
         //for (i=0;i<3;i++) {optionalMOut16[12+i]/=tmp[i];}   // must translation be scaled too?
     }
     //fprintf(stderr,"Extracted scaling: %1.4f,%1.4f,%1.4f\n",tmp[0],tmp[1],tmp[2]);
+}
+NM_API_IMPL nmoat* nm_Mat4PickMatrix(nmoat* NM_RESTRICT mOut16,nmoat x,nmoat y,nmoat width,nmoat height,const int* viewport4)    {
+    // similar to old: glLoadIdentity();gluPickMatrix(x,y,width,height,viewport); [plus glGet(...matrixmode...) to return the matrix]. As usual, return value is the same as mOut16 (for chaining usage).
+    nmoat *m = mOut16,sx,sy;int i;
+    if (width<=0 || height<=0)  return m;
+    m[0]=m[5]=m[10]=m[15]=1;
+    m[1]=m[2]=m[3]=m[4]=m[6]=m[7]=m[8]=m[9]=m[11]=m[14]=0;
+    m[12]=(viewport4[2]-2*(x-viewport4[0]))/width;
+    m[13]=(viewport4[3]-2*(y-viewport4[1]))/height;
+    sx=viewport4[2]/width;sy=viewport4[3]/height;
+    for (i=0;i<3;i++) {m[i]*=sx;m[4+i]*=sy;}
+    return m;
 }
 
 
