@@ -19,10 +19,8 @@ Command-lines to compile them on Linux, Windows and Emscripten are present at th
 * glew (Windows only)
 
 # Screenshots
-![test_shadows](./Screenshots/test_shadows.jpg)
-![test_shadows_dr](./Screenshots/test_shadows_dr.jpg)
-![test_character_standalone](./Screenshots/test_character_standalone.jpg)
-![test_sdf](./Screenshots/test_sdf.gif)
-
-
-
+### Click on images for WebGL demos
+<a href="https://flix01.github.io/emscripten/Header-Only-GL-Helpers/test_shadows.html" target="_blank"><img src="./Screenshots/test_shadows.jpg"></a>
+<a href="https://flix01.github.io/emscripten/Header-Only-GL-Helpers/test_shadows.html" target="_blank"><img src="./Screenshots/test_shadows_dr.jpg"></a>
+<a href="https://flix01.github.io/emscripten/Header-Only-GL-Helpers/test_character.html" target="_blank"><img src="./Screenshots/test_character_standalone.jpg"></a>
+<a href="https://flix01.github.io/emscripten/Header-Only-GL-Helpers/test_sdf.html" target="_blank"><img src="./Screenshots/test_sdf.jpg"></a>
