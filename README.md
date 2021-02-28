@@ -23,4 +23,4 @@ Command-lines to compile them on Linux, Windows and Emscripten are present at th
 <a href="https://flix01.github.io/emscripten/Header-Only-GL-Helpers/test_shadows.html" target="_blank"><img src="./Screenshots/test_shadows.jpg"></a>
 <a href="https://flix01.github.io/emscripten/Header-Only-GL-Helpers/test_shadows.html" target="_blank"><img src="./Screenshots/test_shadows_dr.jpg"></a>
 <a href="https://flix01.github.io/emscripten/Header-Only-GL-Helpers/test_character.html" target="_blank"><img src="./Screenshots/test_character_standalone.jpg"></a>
-<a href="https://flix01.github.io/emscripten/Header-Only-GL-Helpers/test_sdf.html" target="_blank"><img src="./Screenshots/test_sdf.jpg"></a>
+<a href="https://flix01.github.io/emscripten/Header-Only-GL-Helpers/test_sdf.html" target="_blank"><img src="./Screenshots/test_sdf.gif"></a>
